@@ -1,307 +1,105 @@
 <?php
-// Multi-Provider SMM Integration
-// Supports: Crescitaly, Panel.com, Socioboard, SMM.com, MoreThanPanel
+require __DIR__ . '/../app/bootstrap.php';
+require_admin();
 
-// Provider configurations
-define('PROVIDERS', array(
-    'crescitaly' => array(
-        'name' => 'Crescitaly',
-        'api_url' => 'https://crescitaly.com/api',
-        'enabled' => true
-    ),
-    'panelcom' => array(
-        'name' => 'Panel.com',
-        'api_url' => 'https://panel.com/api',
-        'enabled' => true
-    ),
-    'socioboard' => array(
-        'name' => 'Socioboard',
-        'api_url' => 'https://api.socioboard.com',
-        'enabled' => true
-    ),
-    'smmcom' => array(
-        'name' => 'SMM.com',
-        'api_url' => 'https://api.smm.com',
-        'enabled' => true
-    ),
-    'morethanpanel' => array(
-        'name' => 'MoreThanPanel',
-        'api_url' => 'https://morethanpanel.com/api/v2',
-        'enabled' => true
-    )
-));
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $action = post('action');
+    $id = (int)post('id');
 
-// Provider API Keys (configure in admin panel or here)
-$provider_keys = array(
-    'crescitaly_key' => getenv('CRESCITALY_API_KEY') ?: '',
-    'panelcom_key' => getenv('PANELCOM_API_KEY') ?: '',
-    'socioboard_key' => getenv('SOCIOBOARD_API_KEY') ?: '',
-    'smmcom_key' => getenv('SMMCOM_API_KEY') ?: '',
-    'morethanpanel_key' => getenv('MORETHANPANEL_API_KEY') ?: ''
-);
-
-/**
- * Get provider configuration
- */
-function get_provider($provider_name) {
-    return PROVIDERS[$provider_name] ?? null;
-}
-
-/**
- * Get all enabled providers
- */
-function get_enabled_providers() {
-    $enabled = array();
-    foreach (PROVIDERS as $key => $provider) {
-        if ($provider['enabled']) {
-            $enabled[$key] = $provider;
+    if ($action === 'save') {
+        $name = post('name');
+        $apiUrl = post('api_url');
+        $apiKey = post('api_key');
+        $active = isset($_POST['is_active']) ? 1 : 0;
+        if ($name === '' || !filter_var($apiUrl, FILTER_VALIDATE_URL) || !str_starts_with($apiUrl, 'https://')) {
+            flash('error', 'Enter a name and an https:// API URL.');
+            redirect('admin/providers.php' . ($id ? "?edit=$id" : '?edit=new'));
+        }
+        if ($id) {
+            if ($apiKey === '') {
+                q('UPDATE providers SET name = ?, api_url = ?, is_active = ? WHERE id = ?', [$name, $apiUrl, $active, $id]);
+            } else {
+                q('UPDATE providers SET name = ?, api_url = ?, api_key = ?, is_active = ? WHERE id = ?', [$name, $apiUrl, $apiKey, $active, $id]);
+            }
+        } else {
+            q('INSERT INTO providers (name, api_url, api_key, is_active) VALUES (?, ?, ?, ?)', [$name, $apiUrl, $apiKey, $active]);
+            $id = (int)db()->lastInsertId();
+        }
+        // Test the key straight away
+        $p = row('SELECT * FROM providers WHERE id = ?', [$id]);
+        $r = SmmProvider::fromRow($p)->balance();
+        if (isset($r['balance'])) {
+            q('UPDATE providers SET balance = ?, currency = ?, balance_checked_at = NOW() WHERE id = ?', [$r['balance'], $r['currency'] ?? null, $id]);
+            flash('success', "Saved. Connection OK - balance {$r['balance']} " . ($r['currency'] ?? ''));
+        } else {
+            flash('error', 'Saved, but the connection test failed: ' . ($r['error'] ?? 'unknown error'));
+        }
+    } elseif ($action === 'delete') {
+        $used = (int)val('SELECT COUNT(*) FROM services WHERE provider_id = ?', [$id]) + (int)val('SELECT COUNT(*) FROM orders WHERE provider_id = ?', [$id]);
+        if ($used) {
+            flash('error', 'This provider has services or orders. Deactivate it instead.');
+        } else {
+            q('DELETE FROM providers WHERE id = ?', [$id]);
+            flash('success', 'Provider deleted.');
         }
     }
-    return $enabled;
+    redirect('admin/providers.php');
 }
 
-/**
- * Call Crescitaly API
- */
-function crescitaly_api_call($action, $params) {
-    $api_key = getenv('CRESCITALY_API_KEY') ?: CRESCITALY_API_KEY;
-    
-    $curl = curl_init();
-    curl_setopt_array($curl, array(
-        CURLOPT_URL => CRESCITALY_API_URL . '/' . $action,
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_POST => true,
-        CURLOPT_POSTFIELDS => http_build_query(array_merge($params, array('key' => $api_key))),
-        CURLOPT_HTTPHEADER => array('Content-Type: application/x-www-form-urlencoded'),
-        CURLOPT_TIMEOUT => 30
-    ));
-
-    $response = curl_exec($curl);
-    $err = curl_error($curl);
-    curl_close($curl);
-
-    if ($err) {
-        return array('error' => $err);
-    }
-    
-    return json_decode($response, true);
+$edit = null;
+if (isset($_GET['edit'])) {
+    $edit = $_GET['edit'] === 'new' ? ['id' => 0, 'name' => '', 'api_url' => 'https://', 'api_key' => '', 'is_active' => 1]
+        : row('SELECT * FROM providers WHERE id = ?', [(int)$_GET['edit']]);
 }
+$providers = all('SELECT p.*, (SELECT COUNT(*) FROM services s WHERE s.provider_id = p.id) AS services FROM providers p ORDER BY p.name');
 
-/**
- * Call Panel.com API
- */
-function panelcom_api_call($action, $params) {
-    $api_key = getenv('PANELCOM_API_KEY') ?: '';
-    
-    $curl = curl_init();
-    curl_setopt_array($curl, array(
-        CURLOPT_URL => 'https://api.panel.com/v1/' . $action,
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_POST => true,
-        CURLOPT_HTTPHEADER => array(
-            'Content-Type: application/json',
-            'Authorization: Bearer ' . $api_key
-        ),
-        CURLOPT_POSTFIELDS => json_encode($params),
-        CURLOPT_TIMEOUT => 30
-    ));
-
-    $response = curl_exec($curl);
-    $err = curl_error($curl);
-    curl_close($curl);
-
-    if ($err) {
-        return array('error' => $err);
-    }
-    
-    return json_decode($response, true);
-}
-
-/**
- * Call Socioboard API
- */
-function socioboard_api_call($action, $params) {
-    $api_key = getenv('SOCIOBOARD_API_KEY') ?: '';
-    
-    $curl = curl_init();
-    curl_setopt_array($curl, array(
-        CURLOPT_URL => 'https://api.socioboard.com/' . $action,
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_POST => true,
-        CURLOPT_HTTPHEADER => array(
-            'Content-Type: application/json',
-            'X-API-Key: ' . $api_key
-        ),
-        CURLOPT_POSTFIELDS => json_encode($params),
-        CURLOPT_TIMEOUT => 30
-    ));
-
-    $response = curl_exec($curl);
-    $err = curl_error($curl);
-    curl_close($curl);
-
-    if ($err) {
-        return array('error' => $err);
-    }
-    
-    return json_decode($response, true);
-}
-
-/**
- * Call SMM.com API
- */
-function smmcom_api_call($action, $params) {
-    $api_key = getenv('SMMCOM_API_KEY') ?: '';
-    
-    $curl = curl_init();
-    curl_setopt_array($curl, array(
-        CURLOPT_URL => 'https://api.smm.com/' . $action,
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_POST => true,
-        CURLOPT_HTTPHEADER => array(
-            'Content-Type: application/x-www-form-urlencoded',
-        ),
-        CURLOPT_POSTFIELDS => http_build_query(array_merge($params, array('api_token' => $api_key))),
-        CURLOPT_TIMEOUT => 30
-    ));
-
-    $response = curl_exec($curl);
-    $err = curl_error($curl);
-    curl_close($curl);
-
-    if ($err) {
-        return array('error' => $err);
-    }
-    
-    return json_decode($response, true);
-}
-
-/**
- * Call MoreThanPanel API (standard SMM panel API v2)
- * Docs: https://morethanpanel.com/api
- * Every request is a POST to a single endpoint with `key` + `action`.
- * Actions: services, add, status, refill, refill_status, cancel, balance
- */
-function morethanpanel_api_call($action, $params) {
-    $api_key = getenv('MORETHANPANEL_API_KEY') ?: (defined('MORETHANPANEL_API_KEY') ? MORETHANPANEL_API_KEY : '');
-    $api_url = defined('MORETHANPANEL_API_URL') ? MORETHANPANEL_API_URL : 'https://morethanpanel.com/api/v2';
-
-    if (!$api_key) {
-        return array('error' => 'MoreThanPanel API key not configured');
-    }
-
-    // Normalize generic param names used elsewhere in the panel
-    if (isset($params['order_id'])) {
-        $params['order'] = $params['order_id'];
-        unset($params['order_id']);
-    }
-
-    $curl = curl_init();
-    curl_setopt_array($curl, array(
-        CURLOPT_URL => $api_url,
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_POST => true,
-        CURLOPT_POSTFIELDS => http_build_query(array_merge($params, array(
-            'key' => $api_key,
-            'action' => $action
-        ))),
-        CURLOPT_HTTPHEADER => array('Content-Type: application/x-www-form-urlencoded'),
-        CURLOPT_USERAGENT => 'Mozilla/4.0 (compatible; MSIE 5.01; Windows NT 5.0)',
-        CURLOPT_TIMEOUT => 30
-    ));
-
-    $response = curl_exec($curl);
-    $err = curl_error($curl);
-    curl_close($curl);
-
-    if ($err) {
-        return array('error' => $err);
-    }
-
-    $decoded = json_decode($response, true);
-    if (!is_array($decoded)) {
-        return array('error' => 'Invalid response from MoreThanPanel');
-    }
-
-    return $decoded;
-}
-
-/**
- * Universal API caller - routes to correct provider
- */
-function call_provider_api($provider, $action, $params) {
-    switch($provider) {
-        case 'crescitaly':
-            return crescitaly_api_call($action, $params);
-        case 'panelcom':
-            return panelcom_api_call($action, $params);
-        case 'socioboard':
-            return socioboard_api_call($action, $params);
-        case 'smmcom':
-            return smmcom_api_call($action, $params);
-        case 'morethanpanel':
-            return morethanpanel_api_call($action, $params);
-        default:
-            return array('error' => 'Unknown provider: ' . $provider);
-    }
-}
-
-/**
- * Place order on provider with fallback
- */
-function place_order_on_provider($provider, $service_id, $target, $quantity) {
-    $params = array(
-        'service' => $service_id,
-        'link' => $target,
-        'quantity' => $quantity
-    );
-    
-    $result = call_provider_api($provider, 'add', $params);
-    
-    if (isset($result['error'])) {
-        // Try next provider if available
-        return array('error' => $result['error'], 'provider' => $provider);
-    }
-    
-    return array_merge($result, array('provider' => $provider));
-}
-
-/**
- * Get provider balance
- */
-function get_provider_balance($provider) {
-    $result = call_provider_api($provider, 'balance', array());
-    return $result['balance'] ?? 0;
-}
-
-/**
- * Check order status from provider
- */
-function check_provider_order_status($provider, $order_id) {
-    $result = call_provider_api($provider, 'status', array('order_id' => $order_id));
-    return $result;
-}
-
-/**
- * Get the provider's service catalog (id, name, category, rate, min, max)
- * Useful for filling provider_service_id / provider_rate in admin/services.php
- */
-function get_provider_services($provider) {
-    return call_provider_api($provider, 'services', array());
-}
-
-/**
- * Request a refill for a provider order (MoreThanPanel supports this)
- */
-function refill_provider_order($provider, $order_id) {
-    return call_provider_api($provider, 'refill', array('order' => $order_id));
-}
-
-/**
- * Cancel provider orders (comma-separated IDs, MoreThanPanel supports this)
- */
-function cancel_provider_orders($provider, $order_ids) {
-    return call_provider_api($provider, 'cancel', array('orders' => is_array($order_ids) ? implode(',', $order_ids) : $order_ids));
-}
-
+page_header('Providers', 'admin');
 ?>
+<h1>Providers</h1>
+<?php if ($edit): ?>
+<div class="card">
+    <h2><?= $edit['id'] ? 'Edit ' . e($edit['name']) : 'Add provider' ?></h2>
+    <form method="post">
+        <?= csrf_field() ?>
+        <input type="hidden" name="action" value="save">
+        <input type="hidden" name="id" value="<?= (int)$edit['id'] ?>">
+        <div class="form-row">
+            <div class="form-group"><label>Name</label><input type="text" name="name" value="<?= e($edit['name']) ?>" required></div>
+            <div class="form-group"><label>API URL</label><input type="url" name="api_url" value="<?= e($edit['api_url']) ?>" required>
+                <div class="help">MoreThanPanel: https://morethanpanel.com/api/v2</div></div>
+        </div>
+        <div class="form-group"><label>API key</label>
+            <input type="text" name="api_key" value="" placeholder="<?= $edit['api_key'] !== '' ? 'Saved - leave blank to keep' : 'Paste the API key from the provider account page' ?>" autocomplete="off">
+        </div>
+        <label class="checkbox"><input type="checkbox" name="is_active" <?= $edit['is_active'] ? 'checked' : '' ?>> Active</label>
+        <p style="margin-top:14px"><button class="btn">Save &amp; test connection</button> <a class="btn btn-light" href="<?= e(url('admin/providers.php')) ?>">Cancel</a></p>
+    </form>
+</div>
+<?php endif; ?>
+
+<div class="card">
+    <p style="margin-bottom:14px"><a class="btn btn-sm" href="?edit=new">+ Add provider</a>
+        <span class="help">Any SMM panel with the standard API v2 works (MoreThanPanel, Crescitaly, and most others).</span></p>
+    <div class="table-wrap"><table>
+        <tr><th>Name</th><th>API URL</th><th>Key</th><th class="num">Balance</th><th class="num">Services</th><th>Status</th><th></th></tr>
+        <?php foreach ($providers as $p): ?>
+        <tr>
+            <td><strong><?= e($p['name']) ?></strong></td>
+            <td class="break"><?= e($p['api_url']) ?></td>
+            <td><?= $p['api_key'] !== '' ? 'set' : '<span class="badge badge-canceled">missing</span>' ?></td>
+            <td class="num"><?= $p['balance'] !== null ? e(number_format((float)$p['balance'], 2) . ' ' . $p['currency']) : '-' ?></td>
+            <td class="num"><?= (int)$p['services'] ?></td>
+            <td><?= $p['is_active'] ? '<span class="badge badge-active">Active</span>' : '<span class="badge">Off</span>' ?></td>
+            <td style="white-space:nowrap">
+                <a class="btn btn-sm btn-light" href="?edit=<?= (int)$p['id'] ?>">Edit</a>
+                <a class="btn btn-sm" href="<?= e(url('admin/import.php?provider=' . (int)$p['id'])) ?>">Import services</a>
+                <form method="post" class="inline" onsubmit="return confirm('Delete this provider?')">
+                    <?= csrf_field() ?><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="<?= (int)$p['id'] ?>">
+                    <button class="btn btn-sm btn-danger">Delete</button>
+                </form>
+            </td>
+        </tr>
+        <?php endforeach; ?>
+    </table></div>
+</div>
+<?php page_footer();

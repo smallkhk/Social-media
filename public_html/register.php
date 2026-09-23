@@ -1,188 +1,77 @@
 <?php
-require 'config.php';
+require __DIR__ . '/app/bootstrap.php';
 
-if (is_logged_in()) {
-    redirect('/dashboard.php');
+if (current_user()) {
+    redirect('dashboard.php');
+}
+if (isset($_GET['ref']) && is_string($_GET['ref'])) {
+    $_SESSION['ref'] = substr(preg_replace('/[^A-Z0-9]/', '', strtoupper($_GET['ref'])), 0, 16);
 }
 
 $error = '';
-$success = '';
+if (!REGISTRATION_OPEN) {
+    $error = 'Registration is currently closed.';
+} elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $username = post('username');
+    $email = strtolower(post('email'));
+    $password = post('password');
 
-if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    $email = sanitize($_POST['email'] ?? '');
-    $username = sanitize($_POST['username'] ?? '');
-    $password = $_POST['password'] ?? '';
-    $confirm_password = $_POST['confirm_password'] ?? '';
-    
-    if (empty($email) || empty($username) || empty($password)) {
-        $error = 'All fields required';
-    } elseif ($password !== $confirm_password) {
-        $error = 'Passwords do not match';
-    } elseif (strlen($password) < 6) {
-        $error = 'Password must be at least 6 characters';
+    if (!preg_match('/^[A-Za-z0-9_]{3,30}$/', $username)) {
+        $error = 'Username must be 3-30 letters, numbers or underscores.';
+    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $error = 'Enter a valid email address.';
+    } elseif (strlen($password) < 8) {
+        $error = 'Password must be at least 8 characters.';
+    } elseif ($password !== post('password_confirm')) {
+        $error = 'Passwords do not match.';
+    } elseif (too_many_attempts('register')) {
+        $error = 'Too many sign-ups from your network. Try again later.';
+    } elseif (row('SELECT id FROM users WHERE email = ? OR username = ?', [$email, $username])) {
+        $error = 'That email or username is already registered.';
     } else {
-        $check = $conn->query("SELECT id FROM users WHERE email = '$email' OR username = '$username'");
-        if ($check->num_rows > 0) {
-            $error = 'Email or username already exists';
-        } else {
-            $hashed = password_hash($password, PASSWORD_BCRYPT);
-            $api_key = generate_api_key();
-            
-            $sql = "INSERT INTO users (email, username, password, api_key) VALUES ('$email', '$username', '$hashed', '$api_key')";
-            if ($conn->query($sql)) {
-                $success = 'Account created! <a href="login.php">Login now</a>';
-            } else {
-                $error = 'Registration failed: ' . $conn->error;
-            }
-        }
+        $referrer = !empty($_SESSION['ref']) ? val('SELECT id FROM users WHERE referral_code = ?', [$_SESSION['ref']]) : null;
+        do {
+            $code = random_code(8);
+        } while (val('SELECT id FROM users WHERE referral_code = ?', [$code]));
+
+        q('INSERT INTO users (username, email, password, api_key, referral_code, referred_by) VALUES (?, ?, ?, ?, ?, ?)', [
+            $username, $email, password_hash($password, PASSWORD_DEFAULT), bin2hex(random_bytes(32)), $code, $referrer,
+        ]);
+        record_attempt('register');
+        unset($_SESSION['ref']);
+        login_session('user_id', (int)db()->lastInsertId());
+        flash('success', 'Welcome! Add funds to your wallet to place your first order.');
+        redirect('dashboard.php');
     }
 }
+
+page_header('Sign up', 'auth');
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Register - <?php echo SITE_NAME; ?></title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-        }
-        .container {
-            background: white;
-            padding: 40px;
-            border-radius: 10px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
-            max-width: 400px;
-            width: 100%;
-        }
-        h1 {
-            color: #333;
-            margin-bottom: 30px;
-            text-align: center;
-            font-size: 28px;
-        }
-        .form-group {
-            margin-bottom: 20px;
-        }
-        label {
-            display: block;
-            color: #555;
-            margin-bottom: 8px;
-            font-weight: 500;
-        }
-        input {
-            width: 100%;
-            padding: 12px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            font-size: 14px;
-            transition: border-color 0.3s;
-        }
-        input:focus {
-            outline: none;
-            border-color: #667eea;
-        }
-        .btn {
-            width: 100%;
-            padding: 12px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            border-radius: 5px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            margin-top: 20px;
-            transition: transform 0.2s;
-        }
-        .btn:hover {
-            transform: translateY(-2px);
-        }
-        .alert {
-            padding: 12px;
-            border-radius: 5px;
-            margin-bottom: 20px;
-            font-size: 14px;
-        }
-        .alert-error {
-            background: #fee;
-            color: #c33;
-            border: 1px solid #fcc;
-        }
-        .alert-success {
-            background: #efe;
-            color: #3c3;
-            border: 1px solid #cfc;
-        }
-        .alert-success a {
-            color: #3c3;
-            font-weight: 600;
-        }
-        .login-link {
-            text-align: center;
-            margin-top: 20px;
-            color: #666;
-        }
-        .login-link a {
-            color: #667eea;
-            text-decoration: none;
-            font-weight: 600;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>Create Account</h1>
-        
-        <?php if ($error): ?>
-            <div class="alert alert-error"><?php echo $error; ?></div>
-        <?php endif; ?>
-        
-        <?php if ($success): ?>
-            <div class="alert alert-success"><?php echo $success; ?></div>
-        <?php else: ?>
-        
-        <form method="POST">
-            <div class="form-group">
-                <label>Email</label>
-                <input type="email" name="email" required>
-            </div>
-            
-            <div class="form-group">
-                <label>Username</label>
-                <input type="text" name="username" required>
-            </div>
-            
-            <div class="form-group">
-                <label>Password</label>
-                <input type="password" name="password" required>
-            </div>
-            
-            <div class="form-group">
-                <label>Confirm Password</label>
-                <input type="password" name="confirm_password" required>
-            </div>
-            
-            <button type="submit" class="btn">Register</button>
-        </form>
-        
-        <div class="login-link">
-            Already have an account? <a href="login.php">Login</a>
+<div class="auth-card">
+    <h1>Create account</h1>
+    <?php if ($error): ?><div class="alert alert-error"><?= e($error) ?></div><?php endif; ?>
+    <?php if (REGISTRATION_OPEN): ?>
+    <form method="post">
+        <?= csrf_field() ?>
+        <div class="form-group">
+            <label for="username">Username</label>
+            <input type="text" id="username" name="username" value="<?= e(post('username')) ?>" required pattern="[A-Za-z0-9_]{3,30}">
         </div>
-        
-        <?php endif; ?>
-    </div>
-</body>
-</html>
+        <div class="form-group">
+            <label for="email">Email</label>
+            <input type="email" id="email" name="email" value="<?= e(post('email')) ?>" required>
+        </div>
+        <div class="form-group">
+            <label for="password">Password</label>
+            <input type="password" id="password" name="password" required minlength="8">
+        </div>
+        <div class="form-group">
+            <label for="password_confirm">Confirm password</label>
+            <input type="password" id="password_confirm" name="password_confirm" required minlength="8">
+        </div>
+        <button class="btn btn-block">Sign up</button>
+    </form>
+    <?php endif; ?>
+    <p class="foot">Already have an account? <a href="<?= e(url('login.php')) ?>">Log in</a></p>
+</div>
+<?php page_footer();

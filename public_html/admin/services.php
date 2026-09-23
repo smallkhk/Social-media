@@ -1,473 +1,172 @@
 <?php
-require '../config.php';
+require __DIR__ . '/../app/bootstrap.php';
+require_admin();
 
-// Admin authentication (implement proper auth later)
-session_start();
-if (!isset($_SESSION['admin'])) {
-    // Simple password check - implement proper auth
-    if ($_POST['admin_password'] ?? '' !== 'changeme123') {
-        http_response_code(401);
-        die('Unauthorized');
-    }
-    $_SESSION['admin'] = true;
-}
+$providers = all('SELECT id, name FROM providers ORDER BY name');
+$providerNames = array_column($providers, 'name', 'id');
 
-$message = '';
-$error = '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $action = post('action');
+    $id = (int)post('id');
 
-// Add new service
-if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action']) && $_POST['action'] == 'add_service') {
-    $platform = sanitize($_POST['platform'] ?? '');
-    $service_name = sanitize($_POST['service_name'] ?? '');
-    $description = sanitize($_POST['description'] ?? '');
-    $provider = sanitize($_POST['provider'] ?? '');
-    $provider_service_id = sanitize($_POST['provider_service_id'] ?? '');
-    $provider_rate = (float)($_POST['provider_rate'] ?? 0);
-    $our_price = (float)($_POST['our_price'] ?? 0);
-    $our_margin = $our_price - $provider_rate;
-    $min_qty = (int)($_POST['min_quantity'] ?? 10);
-    $max_qty = (int)($_POST['max_quantity'] ?? 10000);
-    $category = sanitize($_POST['category'] ?? '');
-    
-    if ($platform && $service_name && $provider && $provider_service_id) {
-        $sql = "INSERT INTO services 
-                (platform, service_name, description, provider, provider_service_id, 
-                 provider_rate, price, our_margin, min_quantity, max_quantity, category, is_active)
-                VALUES 
-                ('$platform', '$service_name', '$description', '$provider', '$provider_service_id',
-                 $provider_rate, $our_price, $our_margin, $min_qty, $max_qty, '$category', 1)";
-        
-        if ($conn->query($sql)) {
-            $message = "Service added successfully!";
+    if ($action === 'save') {
+        $backup = (int)post('backup_provider_id') ?: null;
+        $data = [
+            post('name'), post('category') ?: 'Other', post('description'), round((float)post('rate'), 4), round((float)post('cost'), 4),
+            max(1, (int)post('min_quantity')), max(1, (int)post('max_quantity')), (int)post('provider_id'), post('provider_service_id'),
+            $backup, $backup ? post('backup_provider_service_id') : null, isset($_POST['refill']) ? 1 : 0, isset($_POST['is_active']) ? 1 : 0,
+        ];
+        if ($data[0] === '' || $data[3] <= 0 || !isset($providerNames[$data[7]]) || $data[8] === '' || $data[5] > $data[6]
+            || ($backup && (!isset($providerNames[$backup]) || $data[10] === ''))) {
+            flash('error', 'Fill in name, price, provider and provider service ID (and min must not exceed max).');
+            redirect('admin/services.php?edit=' . ($id ?: 'new'));
+        }
+        if ($id) {
+            q('UPDATE services SET name = ?, category = ?, description = ?, rate = ?, cost = ?, min_quantity = ?, max_quantity = ?, provider_id = ?,
+               provider_service_id = ?, backup_provider_id = ?, backup_provider_service_id = ?, refill = ?, is_active = ? WHERE id = ?', array_merge($data, [$id]));
         } else {
-            $error = "Error: " . $conn->error;
+            q('INSERT INTO services (name, category, description, rate, cost, min_quantity, max_quantity, provider_id, provider_service_id,
+               backup_provider_id, backup_provider_service_id, refill, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', $data);
         }
-    } else {
-        $error = "Please fill all required fields";
+        flash('success', 'Service saved.');
+    } elseif ($action === 'toggle') {
+        q('UPDATE services SET is_active = 1 - is_active WHERE id = ?', [$id]);
+    } elseif ($action === 'delete') {
+        if (val('SELECT COUNT(*) FROM orders WHERE service_id = ?', [$id])) {
+            q('UPDATE services SET is_active = 0 WHERE id = ?', [$id]);
+            flash('info', 'This service has orders, so it was disabled instead of deleted.');
+        } else {
+            q('DELETE FROM services WHERE id = ?', [$id]);
+            flash('success', 'Service deleted.');
+        }
+    } elseif ($action === 'markup') {
+        $pct = max(0, (float)post('markup'));
+        $pp = (int)post('markup_provider');
+        $n = q('UPDATE services SET rate = ROUND(cost * ?, 4) WHERE cost > 0' . ($pp ? ' AND provider_id = ?' : ''),
+            $pp ? [1 + $pct / 100, $pp] : [1 + $pct / 100])->rowCount();
+        flash('success', "Set price = cost + $pct% on $n service(s).");
     }
+    redirect('admin/services.php?' . http_build_query(array_intersect_key($_GET, array_flip(['provider', 'category', 'q', 'page']))));
 }
 
-// Update service
-if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action']) && $_POST['action'] == 'update_service') {
-    $service_id = (int)$_POST['service_id'];
-    $platform = sanitize($_POST['platform'] ?? '');
-    $service_name = sanitize($_POST['service_name'] ?? '');
-    $provider_rate = (float)($_POST['provider_rate'] ?? 0);
-    $our_price = (float)($_POST['our_price'] ?? 0);
-    $our_margin = $our_price - $provider_rate;
-    $is_active = isset($_POST['is_active']) ? 1 : 0;
-    
-    $conn->query("
-        UPDATE services 
-        SET provider_rate = $provider_rate,
-            price = $our_price,
-            our_margin = $our_margin,
-            is_active = $is_active
-        WHERE id = $service_id
-    ");
-    
-    $message = "Service updated!";
+$edit = null;
+if (isset($_GET['edit'])) {
+    $edit = $_GET['edit'] === 'new'
+        ? ['id' => 0, 'name' => '', 'category' => '', 'description' => '', 'rate' => '', 'cost' => '', 'min_quantity' => 10, 'max_quantity' => 10000,
+           'provider_id' => 0, 'provider_service_id' => '', 'backup_provider_id' => null, 'backup_provider_service_id' => '', 'refill' => 0, 'is_active' => 1]
+        : row('SELECT * FROM services WHERE id = ?', [(int)$_GET['edit']]);
 }
 
-// Delete service
-if ($_GET['delete'] ?? false) {
-    $service_id = (int)$_GET['delete'];
-    $conn->query("DELETE FROM services WHERE id = $service_id");
-    $message = "Service deleted!";
+$where = ['1=1'];
+$params = [];
+if ((int)($_GET['provider'] ?? 0)) {
+    $where[] = 'provider_id = ?';
+    $params[] = (int)$_GET['provider'];
 }
-
-// Get services
-$provider = $_GET['provider'] ?? 'all';
-$platform = $_GET['platform'] ?? 'all';
-
-$where = "WHERE 1=1";
-if ($provider !== 'all') {
-    $provider = sanitize($provider);
-    $where .= " AND provider = '$provider'";
+if (is_string($_GET['category'] ?? null) && $_GET['category'] !== '') {
+    $where[] = 'category = ?';
+    $params[] = $_GET['category'];
 }
-if ($platform !== 'all') {
-    $platform = sanitize($platform);
-    $where .= " AND platform = '$platform'";
+if (is_string($_GET['q'] ?? null) && trim($_GET['q']) !== '') {
+    $where[] = '(name LIKE ? OR id = ? OR provider_service_id = ?)';
+    array_push($params, '%' . trim($_GET['q']) . '%', (int)$_GET['q'], trim($_GET['q']));
 }
+$whereSql = implode(' AND ', $where);
+$perPage = 100;
+$total = (int)val("SELECT COUNT(*) FROM services WHERE $whereSql", $params);
+$pages = max(1, (int)ceil($total / $perPage));
+$page = min($pages, max(1, (int)($_GET['page'] ?? 1)));
+$services = all("SELECT * FROM services WHERE $whereSql ORDER BY category, rate LIMIT $perPage OFFSET " . (($page - 1) * $perPage), $params);
+$categories = array_column(all('SELECT DISTINCT category FROM services ORDER BY category'), 'category');
 
-$services = $conn->query("SELECT * FROM services $where ORDER BY platform, service_name");
-$service_list = [];
-while ($svc = $services->fetch_assoc()) {
-    $service_list[] = $svc;
-}
-
-// Get stats
-$total_services = $conn->query("SELECT COUNT(*) as count FROM services")->fetch_assoc()['count'];
-$active_services = $conn->query("SELECT COUNT(*) as count FROM services WHERE is_active = 1")->fetch_assoc()['count'];
-$total_profit = $conn->query("SELECT SUM(our_margin) as total FROM services")->fetch_assoc()['total'];
+page_header('Services', 'admin');
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin - Services Management</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            background: #f0f2f5;
-            padding: 20px;
-        }
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
-        }
-        .header {
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            margin-bottom: 30px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .stats {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-            margin-bottom: 30px;
-        }
-        .stat-box {
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .stat-label {
-            color: #999;
-            font-size: 12px;
-            text-transform: uppercase;
-        }
-        .stat-value {
-            font-size: 28px;
-            color: #667eea;
-            font-weight: 700;
-            margin: 10px 0;
-        }
-        .card {
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-            margin-bottom: 30px;
-        }
-        .card h2 {
-            color: #333;
-            margin-bottom: 20px;
-            font-size: 18px;
-        }
-        .alert {
-            padding: 12px;
-            border-radius: 5px;
-            margin-bottom: 15px;
-            font-size: 13px;
-        }
-        .alert-success {
-            background: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-        }
-        .alert-error {
-            background: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
-        .form-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-        }
-        .form-group {
-            margin-bottom: 15px;
-        }
-        label {
-            display: block;
-            color: #555;
-            margin-bottom: 5px;
-            font-weight: 500;
-            font-size: 13px;
-        }
-        input,
-        select,
-        textarea {
-            width: 100%;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            font-size: 13px;
-        }
-        input:focus,
-        select:focus {
-            outline: none;
-            border-color: #667eea;
-        }
-        .btn {
-            background: #667eea;
-            color: white;
-            padding: 10px 20px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-weight: 600;
-            transition: background 0.3s;
-        }
-        .btn:hover {
-            background: #764ba2;
-        }
-        .btn-small {
-            padding: 6px 12px;
-            font-size: 12px;
-        }
-        .btn-danger {
-            background: #f44336;
-        }
-        .btn-danger:hover {
-            background: #da190b;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 13px;
-        }
-        th {
-            background: #f8f9fa;
-            padding: 12px;
-            text-align: left;
-            color: #555;
-            font-weight: 600;
-            border-bottom: 2px solid #ddd;
-        }
-        td {
-            padding: 12px;
-            border-bottom: 1px solid #eee;
-            color: #666;
-        }
-        tr:hover {
-            background: #f8f9fa;
-        }
-        .badge {
-            display: inline-block;
-            padding: 4px 8px;
-            border-radius: 12px;
-            font-size: 11px;
-            font-weight: 600;
-        }
-        .badge-green {
-            background: #d4edda;
-            color: #155724;
-        }
-        .badge-red {
-            background: #f8d7da;
-            color: #721c24;
-        }
-        .margin-positive {
-            color: #28a745;
-            font-weight: 600;
-        }
-        .margin-negative {
-            color: #dc3545;
-            font-weight: 600;
-        }
-        .filters {
-            display: flex;
-            gap: 15px;
-            margin-bottom: 20px;
-            flex-wrap: wrap;
-        }
-        .filters select {
-            flex: 1;
-            min-width: 150px;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>📦 Admin - Services Management</h1>
-            <p>Add, update, and manage SMM services from multiple providers</p>
+<h1>Services</h1>
+<?php if ($edit): ?>
+<div class="card">
+    <h2><?= $edit['id'] ? 'Edit service #' . (int)$edit['id'] : 'Add service' ?></h2>
+    <form method="post">
+        <?= csrf_field() ?>
+        <input type="hidden" name="action" value="save"><input type="hidden" name="id" value="<?= (int)$edit['id'] ?>">
+        <div class="form-row">
+            <div class="form-group"><label>Name</label><input type="text" name="name" value="<?= e($edit['name']) ?>" required></div>
+            <div class="form-group"><label>Category</label><input type="text" name="category" value="<?= e($edit['category']) ?>" list="cats"></div>
         </div>
-
-        <?php if ($message): ?>
-            <div class="alert alert-success"><?php echo $message; ?></div>
-        <?php endif; ?>
-
-        <?php if ($error): ?>
-            <div class="alert alert-error"><?php echo $error; ?></div>
-        <?php endif; ?>
-
-        <!-- Stats -->
-        <div class="stats">
-            <div class="stat-box">
-                <div class="stat-label">Total Services</div>
-                <div class="stat-value"><?php echo $total_services; ?></div>
-            </div>
-            <div class="stat-box">
-                <div class="stat-label">Active Services</div>
-                <div class="stat-value"><?php echo $active_services; ?></div>
-            </div>
-            <div class="stat-box">
-                <div class="stat-label">Total Margin per Unit</div>
-                <div class="stat-value">$<?php echo number_format($total_profit ?? 0, 6); ?></div>
-            </div>
+        <datalist id="cats"><?php foreach ($categories as $c): ?><option value="<?= e($c) ?>"><?php endforeach; ?></datalist>
+        <div class="form-group"><label>Description (shown to customers)</label><textarea name="description" rows="2"><?= e($edit['description']) ?></textarea></div>
+        <div class="form-row">
+            <div class="form-group"><label>Your price / 1000</label><input type="number" step="0.0001" min="0.0001" name="rate" value="<?= e($edit['rate']) ?>" required></div>
+            <div class="form-group"><label>Provider cost / 1000</label><input type="number" step="0.0001" min="0" name="cost" value="<?= e($edit['cost']) ?>"></div>
+            <div class="form-group"><label>Min</label><input type="number" name="min_quantity" value="<?= (int)$edit['min_quantity'] ?>" min="1"></div>
+            <div class="form-group"><label>Max</label><input type="number" name="max_quantity" value="<?= (int)$edit['max_quantity'] ?>" min="1"></div>
         </div>
-
-        <!-- Add Service Form -->
-        <div class="card">
-            <h2>➕ Add New Service</h2>
-            <form method="POST">
-                <input type="hidden" name="action" value="add_service">
-                
-                <div class="form-grid">
-                    <div class="form-group">
-                        <label>Platform *</label>
-                        <select name="platform" required>
-                            <option value="">Select Platform</option>
-                            <option value="Instagram">Instagram</option>
-                            <option value="TikTok">TikTok</option>
-                            <option value="YouTube">YouTube</option>
-                            <option value="Twitter">Twitter</option>
-                            <option value="Facebook">Facebook</option>
-                            <option value="Telegram">Telegram</option>
-                            <option value="Spotify">Spotify</option>
-                            <option value="LinkedIn">LinkedIn</option>
-                        </select>
-                    </div>
-
-                    <div class="form-group">
-                        <label>Service Name *</label>
-                        <input type="text" name="service_name" placeholder="e.g., Instagram Followers" required>
-                    </div>
-
-                    <div class="form-group">
-                        <label>Category</label>
-                        <input type="text" name="category" placeholder="e.g., followers, likes, views">
-                    </div>
-
-                    <div class="form-group">
-                        <label>Provider *</label>
-                        <select name="provider" required>
-                            <option value="">Select Provider</option>
-                            <option value="crescitaly">Crescitaly</option>
-                            <option value="panelcom">Panel.com</option>
-                            <option value="socioboard">Socioboard</option>
-                            <option value="smmcom">SMM.com</option>
-                            <option value="morethanpanel">MoreThanPanel</option>
-                        </select>
-                    </div>
-
-                    <div class="form-group">
-                        <label>Provider Service ID *</label>
-                        <input type="text" name="provider_service_id" placeholder="From provider API" required>
-                    </div>
-
-                    <div class="form-group">
-                        <label>Provider Rate (cost) *</label>
-                        <input type="number" step="0.000001" name="provider_rate" placeholder="0.0005" required>
-                    </div>
-
-                    <div class="form-group">
-                        <label>Your Price *</label>
-                        <input type="number" step="0.000001" name="our_price" placeholder="0.001" required>
-                    </div>
-
-                    <div class="form-group">
-                        <label>Min Quantity</label>
-                        <input type="number" name="min_quantity" value="10">
-                    </div>
-
-                    <div class="form-group">
-                        <label>Max Quantity</label>
-                        <input type="number" name="max_quantity" value="10000">
-                    </div>
-                </div>
-
-                <div class="form-group">
-                    <label>Description</label>
-                    <textarea name="description" rows="3" placeholder="Service description"></textarea>
-                </div>
-
-                <button type="submit" class="btn">Add Service</button>
-            </form>
+        <div class="form-row">
+            <div class="form-group"><label>Provider</label><select name="provider_id" required>
+                <?php foreach ($providers as $p): ?><option value="<?= (int)$p['id'] ?>" <?= (int)$edit['provider_id'] === (int)$p['id'] ? 'selected' : '' ?>><?= e($p['name']) ?></option><?php endforeach; ?>
+            </select></div>
+            <div class="form-group"><label>Provider service ID</label><input type="text" name="provider_service_id" value="<?= e($edit['provider_service_id']) ?>" required></div>
+            <div class="form-group"><label>Backup provider (optional)</label><select name="backup_provider_id">
+                <option value="">None</option>
+                <?php foreach ($providers as $p): ?><option value="<?= (int)$p['id'] ?>" <?= (int)$edit['backup_provider_id'] === (int)$p['id'] ? 'selected' : '' ?>><?= e($p['name']) ?></option><?php endforeach; ?>
+            </select></div>
+            <div class="form-group"><label>Backup service ID</label><input type="text" name="backup_provider_service_id" value="<?= e($edit['backup_provider_service_id']) ?>"></div>
         </div>
+        <p class="help" style="margin-bottom:10px">If the main provider refuses an order (out of balance, service down), it is sent to the backup provider's equivalent service.</p>
+        <label class="checkbox"><input type="checkbox" name="refill" <?= $edit['refill'] ? 'checked' : '' ?>> Refill guarantee</label>
+        <label class="checkbox"><input type="checkbox" name="is_active" <?= $edit['is_active'] ? 'checked' : '' ?>> Active</label>
+        <p style="margin-top:14px"><button class="btn">Save</button> <a class="btn btn-light" href="<?= e(url('admin/services.php')) ?>">Cancel</a></p>
+    </form>
+</div>
+<?php endif; ?>
 
-        <!-- Services List -->
-        <div class="card">
-            <h2>📋 Services List</h2>
+<div class="card">
+    <h2>Bulk pricing</h2>
+    <form method="post" class="filters" onsubmit="return confirm('Reprice these services?')">
+        <?= csrf_field() ?><input type="hidden" name="action" value="markup">
+        <label class="checkbox">Price = provider cost + <input type="number" name="markup" value="50" min="0" step="1" style="width:90px"> %</label>
+        <select name="markup_provider"><option value="0">All providers</option>
+            <?php foreach ($providers as $p): ?><option value="<?= (int)$p['id'] ?>"><?= e($p['name']) ?></option><?php endforeach; ?></select>
+        <button class="btn btn-sm">Apply</button>
+    </form>
+</div>
 
-            <div class="filters">
-                <select onchange="window.location.href='?provider=' + this.value + '&platform=<?php echo $_GET['platform'] ?? 'all'; ?>'">
-                    <option value="all">All Providers</option>
-                    <option value="crescitaly">Crescitaly</option>
-                    <option value="panelcom">Panel.com</option>
-                    <option value="socioboard">Socioboard</option>
-                    <option value="smmcom">SMM.com</option>
-                    <option value="morethanpanel">MoreThanPanel</option>
-                </select>
-
-                <select onchange="window.location.href='?provider=<?php echo $_GET['provider'] ?? 'all'; ?>&platform=' + this.value">
-                    <option value="all">All Platforms</option>
-                    <option value="Instagram">Instagram</option>
-                    <option value="TikTok">TikTok</option>
-                    <option value="YouTube">YouTube</option>
-                    <option value="Twitter">Twitter</option>
-                </select>
-            </div>
-
-            <table>
-                <thead>
-                    <tr>
-                        <th>Platform</th>
-                        <th>Service</th>
-                        <th>Provider</th>
-                        <th>Provider Rate</th>
-                        <th>Your Price</th>
-                        <th>Margin</th>
-                        <th>Status</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach ($service_list as $svc): ?>
-                    <tr>
-                        <td><?php echo ucfirst($svc['platform']); ?></td>
-                        <td><?php echo htmlspecialchars($svc['service_name']); ?></td>
-                        <td><span class="badge badge-green"><?php echo ucfirst($svc['provider']); ?></span></td>
-                        <td>$<?php echo number_format($svc['provider_rate'], 6); ?></td>
-                        <td>$<?php echo number_format($svc['price'], 6); ?></td>
-                        <td>
-                            <span class="<?php echo ($svc['our_margin'] > 0) ? 'margin-positive' : 'margin-negative'; ?>">
-                                $<?php echo number_format($svc['our_margin'], 6); ?>
-                            </span>
-                        </td>
-                        <td>
-                            <span class="badge <?php echo $svc['is_active'] ? 'badge-green' : 'badge-red'; ?>">
-                                <?php echo $svc['is_active'] ? 'Active' : 'Inactive'; ?>
-                            </span>
-                        </td>
-                        <td>
-                            <button class="btn btn-small" onclick="editService(<?php echo $svc['id']; ?>)">Edit</button>
-                            <a href="?delete=<?php echo $svc['id']; ?>" class="btn btn-danger btn-small" onclick="return confirm('Delete?')">Delete</a>
-                        </td>
-                    </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
-    </div>
-
-    <script>
-        function editService(id) {
-            alert('Edit feature coming soon. ID: ' + id);
-            // TODO: Implement inline edit or modal
-        }
-    </script>
-</body>
-</html>
+<div class="card">
+    <form method="get" class="filters">
+        <select name="provider"><option value="">All providers</option>
+            <?php foreach ($providers as $p): ?><option value="<?= (int)$p['id'] ?>" <?= (int)($_GET['provider'] ?? 0) === (int)$p['id'] ? 'selected' : '' ?>><?= e($p['name']) ?></option><?php endforeach; ?></select>
+        <select name="category"><option value="">All categories</option>
+            <?php foreach ($categories as $c): ?><option <?= ($_GET['category'] ?? '') === $c ? 'selected' : '' ?>><?= e($c) ?></option><?php endforeach; ?></select>
+        <input type="text" name="q" value="<?= e($_GET['q'] ?? '') ?>" placeholder="Search">
+        <button class="btn btn-sm">Filter</button>
+        <a class="btn btn-sm btn-ok" href="?edit=new">+ Add manually</a>
+    </form>
+    <?php if (!$services): ?>
+        <p class="muted">No services. Import them from <a href="<?= e(url('admin/providers.php')) ?>">Providers</a>.</p>
+    <?php else: ?>
+    <div class="table-wrap"><table>
+        <tr><th>ID</th><th>Name</th><th>Provider</th><th class="num">Price</th><th class="num">Cost</th><th class="num">Margin</th><th class="num">Min/Max</th><th>Status</th><th></th></tr>
+        <?php foreach ($services as $s): $margin = $s['rate'] > 0 && $s['cost'] > 0 ? ($s['rate'] - $s['cost']) / $s['rate'] * 100 : null; ?>
+        <tr>
+            <td><?= (int)$s['id'] ?></td>
+            <td><?= e($s['name']) ?><div class="help"><?= e($s['category']) ?></div></td>
+            <td><?= e($providerNames[$s['provider_id']] ?? '?') ?> #<?= e($s['provider_service_id']) ?>
+                <?php if ($s['backup_provider_id']): ?><div class="help">backup: <?= e($providerNames[$s['backup_provider_id']] ?? '?') ?> #<?= e($s['backup_provider_service_id']) ?></div><?php endif; ?></td>
+            <td class="num"><?= money($s['rate'], 4) ?></td>
+            <td class="num"><?= money($s['cost'], 4) ?></td>
+            <td class="num" style="color:<?= $margin !== null && $margin < 10 ? 'var(--bad)' : 'inherit' ?>"><?= $margin !== null ? number_format($margin, 1) . '%' : '-' ?></td>
+            <td class="num"><?= number_format((int)$s['min_quantity']) ?> / <?= number_format((int)$s['max_quantity']) ?></td>
+            <td><?= $s['is_active'] ? '<span class="badge badge-active">On</span>' : '<span class="badge">Off</span>' ?></td>
+            <td style="white-space:nowrap">
+                <a class="btn btn-sm btn-light" href="?edit=<?= (int)$s['id'] ?>">Edit</a>
+                <form method="post" class="inline"><?= csrf_field() ?><input type="hidden" name="action" value="toggle"><input type="hidden" name="id" value="<?= (int)$s['id'] ?>">
+                    <button class="btn btn-sm btn-light"><?= $s['is_active'] ? 'Disable' : 'Enable' ?></button></form>
+                <form method="post" class="inline" onsubmit="return confirm('Delete this service?')"><?= csrf_field() ?><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="<?= (int)$s['id'] ?>">
+                    <button class="btn btn-sm btn-danger">Delete</button></form>
+            </td>
+        </tr>
+        <?php endforeach; ?>
+    </table></div>
+    <?= pagination($page, $pages, array_intersect_key($_GET, array_flip(['provider', 'category', 'q']))) ?>
+    <?php endif; ?>
+</div>
+<?php page_footer();
