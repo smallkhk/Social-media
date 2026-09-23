@@ -48,6 +48,19 @@ mysql -u your_user -p your_database < upgrade-db-providers.sql
 3. Account → API Settings
 4. Copy API Token
 
+#### MoreThanPanel
+1. Go to https://morethanpanel.com
+2. Register/Login
+3. Account → API (docs: https://morethanpanel.com/api)
+4. Copy API Key
+5. Import `database/upgrade-db-morethanpanel.sql` if you already ran `upgrade-db-providers.sql` earlier
+
+MoreThanPanel uses the standard SMM API v2 (`POST https://morethanpanel.com/api/v2` with `key` + `action`).
+Supported in `providers.php`: `services`, `add` (incl. drip-feed `runs`/`interval`), `status`,
+`refill`, `cancel`, `balance`. Use `get_provider_services('morethanpanel')` to list service IDs and
+rates for `provider_service_id` / `provider_rate`. `Partial` orders refund the customer for the
+undelivered `remains`; `Canceled` orders are fully refunded by `cron/sync-orders.php`.
+
 ### Step 3: Enter API Keys in Admin Panel
 
 1. Upload `admin/providers.php` to your hosting
@@ -145,6 +158,7 @@ check_admin_auth(); // Create this function with sessions
 // Add to .env or cPanel environment:
 CRESCITALY_API_KEY=your_key_here
 PANELCOM_API_KEY=your_key_here
+MORETHANPANEL_API_KEY=your_key_here
 ```
 
 ### Cron Job Protection

@@ -73,6 +73,22 @@ while ($order = $orders->fetch_assoc()) {
                 ");
                 
                 $error_count++;
+            } elseif ($new_status === 'partial') {
+                // Partially delivered: provider refunds undelivered part, so refund the customer proportionally
+                $conn->query("UPDATE orders SET status = 'partial' WHERE id = $order_id");
+
+                $remains = max(0, (int)($result['remains'] ?? 0));
+                $quantity = max(1, (int)$order['quantity']);
+                $refund = round($order['total_price'] * min($remains, $quantity) / $quantity, 2);
+                if ($refund > 0) {
+                    $conn->query("UPDATE users SET balance = balance + $refund WHERE id = {$order['user_id']}");
+                }
+
+                $conn->query("
+                    UPDATE provider_performance 
+                    SET successful_orders = successful_orders + 1
+                    WHERE provider = '$provider'
+                ");
             }
             
             // Log the sync
@@ -90,7 +106,7 @@ while ($order = $orders->fetch_assoc()) {
 }
 
 // Update provider balance
-foreach (['crescitaly', 'panelcom', 'socioboard', 'smmcom'] as $provider) {
+foreach (['crescitaly', 'panelcom', 'socioboard', 'smmcom', 'morethanpanel'] as $provider) {
     $balance = get_provider_balance($provider);
     if ($balance !== false) {
         $conn->query("
@@ -154,6 +170,18 @@ function map_provider_status($provider, $status) {
             'completed' => 'completed',
             'error' => 'failed',
             'failed' => 'failed'
+        );
+    }
+    // MoreThanPanel status mapping (API v2: Pending, In progress, Processing, Completed, Partial, Canceled)
+    elseif ($provider === 'morethanpanel') {
+        $map = array(
+            'pending' => 'pending',
+            'in progress' => 'processing',
+            'processing' => 'processing',
+            'completed' => 'completed',
+            'partial' => 'partial',
+            'canceled' => 'failed',
+            'cancelled' => 'failed'
         );
     }
     

@@ -1,5 +1,5 @@
 -- Enhanced Nora Social Media Panel Database Schema
--- Multi-Provider Support (Crescitaly, Panel.com, Socioboard, SMM.com)
+-- Multi-Provider Support (Crescitaly, Panel.com, Socioboard, SMM.com, MoreThanPanel)
 
 -- Drop old tables if upgrading (BACKUP FIRST!)
 -- DROP TABLE IF EXISTS services;
@@ -70,7 +70,8 @@ INSERT INTO provider_accounts (provider_name, api_key, is_active) VALUES
 ('crescitaly', 'your_crescitaly_api_key_here', 1),
 ('panelcom', 'your_panelcom_api_key_here', 1),
 ('socioboard', 'your_socioboard_api_key_here', 1),
-('smmcom', 'your_smmcom_api_key_here', 1)
+('smmcom', 'your_smmcom_api_key_here', 1),
+('morethanpanel', 'your_morethanpanel_api_key_here', 1)
 ON DUPLICATE KEY UPDATE
 api_key = VALUES(api_key);
 
@@ -79,4 +80,5 @@ INSERT IGNORE INTO provider_performance (provider, total_orders, successful_orde
 ('crescitaly', 0, 0, 0),
 ('panelcom', 0, 0, 0),
 ('socioboard', 0, 0, 0),
-('smmcom', 0, 0, 0);
+('smmcom', 0, 0, 0),
+('morethanpanel', 0, 0, 0);

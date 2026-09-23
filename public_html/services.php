@@ -359,6 +359,7 @@ $total_profit = $conn->query("SELECT SUM(our_margin) as total FROM services")->f
                             <option value="panelcom">Panel.com</option>
                             <option value="socioboard">Socioboard</option>
                             <option value="smmcom">SMM.com</option>
+                            <option value="morethanpanel">MoreThanPanel</option>
                         </select>
                     </div>
 
@@ -408,6 +409,7 @@ $total_profit = $conn->query("SELECT SUM(our_margin) as total FROM services")->f
                     <option value="panelcom">Panel.com</option>
                     <option value="socioboard">Socioboard</option>
                     <option value="smmcom">SMM.com</option>
+                    <option value="morethanpanel">MoreThanPanel</option>
                 </select>
 
                 <select onchange="window.location.href='?provider=<?php echo $_GET['provider'] ?? 'all'; ?>&platform=' + this.value">

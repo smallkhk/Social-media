@@ -1,7 +1,7 @@
 # Nora Panel V2 - Multi-Provider SMM System
 
 ## Overview
-PHP/MySQL SMM reseller panel with 4 providers: Crescitaly, Panel.com, Socioboard, SMM.com. Auto-routing, failover, real-time sync, affiliate system.
+PHP/MySQL SMM reseller panel with 5 providers: Crescitaly, Panel.com, Socioboard, SMM.com, MoreThanPanel. Auto-routing, failover, real-time sync, affiliate system.
 
 ## Providers
 
@@ -11,6 +11,7 @@ PHP/MySQL SMM reseller panel with 4 providers: Crescitaly, Panel.com, Socioboard
 | Panel.com | panel.com | 3000+ | Cheapest rates |
 | Socioboard | socioboard.com | 2000+ | API quality |
 | SMM.com | smm.com | 2200+ | Drip feed |
+| MoreThanPanel | morethanpanel.com | — | Standard API v2, refill + cancel |
 
 ## Architecture
 
@@ -33,6 +34,7 @@ PHP/MySQL SMM reseller panel with 4 providers: Crescitaly, Panel.com, Socioboard
 - **nora-panel-db.sql** - Base schema
 - **upgrade-db-providers.sql** - Provider tables, order_logs, performance tracking
 - **upgrade-db-reseller.sql** - Affiliate/commission system
+- **upgrade-db-morethanpanel.sql** - Adds MoreThanPanel to an existing install
 
 ## Key Functions
 
@@ -170,6 +172,7 @@ define('CRESCITALY_API_KEY', '...');  // From crescitaly.com
 define('PANELCOM_API_KEY', '...');    // From panel.com
 define('SOCIOBOARD_API_KEY', '...'); // From socioboard.com
 define('SMMCOM_API_KEY', '...');      // From smm.com
+define('MORETHANPANEL_API_KEY', '...'); // From morethanpanel.com/api
 define('USDT_WALLET', '0x...');       // Your BSC wallet
 define('USDT_NETWORK', 'BSC');        // or 'TRC20'
 define('SITE_URL', 'https://yourdomain.com');

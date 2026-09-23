@@ -15,6 +15,10 @@ define('CRESCITALY_API_KEY', 'your_crescitaly_api_key');
 define('CRESCITALY_API_URL', 'https://crescitaly.com/api');
 define('CRESCITALY_RESELLER_ID', 'your_reseller_id');
 
+// MoreThanPanel API (https://morethanpanel.com/api)
+define('MORETHANPANEL_API_KEY', 'your_morethanpanel_api_key');
+define('MORETHANPANEL_API_URL', 'https://morethanpanel.com/api/v2');
+
 // Crypto Payment - BSC USDT (TRC-20 also supported)
 define('CRYPTO_ENABLED', true);
 define('USDT_WALLET', 'your_bsc_usdt_wallet_address');

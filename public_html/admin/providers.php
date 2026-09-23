@@ -1,6 +1,6 @@
 <?php
 // Multi-Provider SMM Integration
-// Supports: Crescitaly, Panel.com, Socioboard, SMM.com
+// Supports: Crescitaly, Panel.com, Socioboard, SMM.com, MoreThanPanel
 
 // Provider configurations
 define('PROVIDERS', array(
@@ -23,6 +23,11 @@ define('PROVIDERS', array(
         'name' => 'SMM.com',
         'api_url' => 'https://api.smm.com',
         'enabled' => true
+    ),
+    'morethanpanel' => array(
+        'name' => 'MoreThanPanel',
+        'api_url' => 'https://morethanpanel.com/api/v2',
+        'enabled' => true
     )
 ));
 
@@ -31,7 +36,8 @@ $provider_keys = array(
     'crescitaly_key' => getenv('CRESCITALY_API_KEY') ?: '',
     'panelcom_key' => getenv('PANELCOM_API_KEY') ?: '',
     'socioboard_key' => getenv('SOCIOBOARD_API_KEY') ?: '',
-    'smmcom_key' => getenv('SMMCOM_API_KEY') ?: ''
+    'smmcom_key' => getenv('SMMCOM_API_KEY') ?: '',
+    'morethanpanel_key' => getenv('MORETHANPANEL_API_KEY') ?: ''
 );
 
 /**
@@ -171,6 +177,56 @@ function smmcom_api_call($action, $params) {
 }
 
 /**
+ * Call MoreThanPanel API (standard SMM panel API v2)
+ * Docs: https://morethanpanel.com/api
+ * Every request is a POST to a single endpoint with `key` + `action`.
+ * Actions: services, add, status, refill, refill_status, cancel, balance
+ */
+function morethanpanel_api_call($action, $params) {
+    $api_key = getenv('MORETHANPANEL_API_KEY') ?: (defined('MORETHANPANEL_API_KEY') ? MORETHANPANEL_API_KEY : '');
+    $api_url = defined('MORETHANPANEL_API_URL') ? MORETHANPANEL_API_URL : 'https://morethanpanel.com/api/v2';
+
+    if (!$api_key) {
+        return array('error' => 'MoreThanPanel API key not configured');
+    }
+
+    // Normalize generic param names used elsewhere in the panel
+    if (isset($params['order_id'])) {
+        $params['order'] = $params['order_id'];
+        unset($params['order_id']);
+    }
+
+    $curl = curl_init();
+    curl_setopt_array($curl, array(
+        CURLOPT_URL => $api_url,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS => http_build_query(array_merge($params, array(
+            'key' => $api_key,
+            'action' => $action
+        ))),
+        CURLOPT_HTTPHEADER => array('Content-Type: application/x-www-form-urlencoded'),
+        CURLOPT_USERAGENT => 'Mozilla/4.0 (compatible; MSIE 5.01; Windows NT 5.0)',
+        CURLOPT_TIMEOUT => 30
+    ));
+
+    $response = curl_exec($curl);
+    $err = curl_error($curl);
+    curl_close($curl);
+
+    if ($err) {
+        return array('error' => $err);
+    }
+
+    $decoded = json_decode($response, true);
+    if (!is_array($decoded)) {
+        return array('error' => 'Invalid response from MoreThanPanel');
+    }
+
+    return $decoded;
+}
+
+/**
  * Universal API caller - routes to correct provider
  */
 function call_provider_api($provider, $action, $params) {
@@ -183,6 +239,8 @@ function call_provider_api($provider, $action, $params) {
             return socioboard_api_call($action, $params);
         case 'smmcom':
             return smmcom_api_call($action, $params);
+        case 'morethanpanel':
+            return morethanpanel_api_call($action, $params);
         default:
             return array('error' => 'Unknown provider: ' . $provider);
     }
@@ -222,6 +280,28 @@ function get_provider_balance($provider) {
 function check_provider_order_status($provider, $order_id) {
     $result = call_provider_api($provider, 'status', array('order_id' => $order_id));
     return $result;
+}
+
+/**
+ * Get the provider's service catalog (id, name, category, rate, min, max)
+ * Useful for filling provider_service_id / provider_rate in admin/services.php
+ */
+function get_provider_services($provider) {
+    return call_provider_api($provider, 'services', array());
+}
+
+/**
+ * Request a refill for a provider order (MoreThanPanel supports this)
+ */
+function refill_provider_order($provider, $order_id) {
+    return call_provider_api($provider, 'refill', array('order' => $order_id));
+}
+
+/**
+ * Cancel provider orders (comma-separated IDs, MoreThanPanel supports this)
+ */
+function cancel_provider_orders($provider, $order_ids) {
+    return call_provider_api($provider, 'cancel', array('orders' => is_array($order_ids) ? implode(',', $order_ids) : $order_ids));
 }
 
 ?>
