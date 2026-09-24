@@ -52,6 +52,7 @@ CREATE TABLE services (
     backup_provider_service_id VARCHAR(50) NULL,
     name VARCHAR(255) NOT NULL,
     category VARCHAR(190) NOT NULL DEFAULT 'Other',
+    type VARCHAR(50) NOT NULL DEFAULT 'Default',
     description TEXT NULL,
     rate DECIMAL(14, 4) NOT NULL,
     cost DECIMAL(14, 4) NOT NULL DEFAULT 0,
@@ -59,6 +60,7 @@ CREATE TABLE services (
     max_quantity INT UNSIGNED NOT NULL DEFAULT 10000,
     refill TINYINT(1) NOT NULL DEFAULT 0,
     cancel TINYINT(1) NOT NULL DEFAULT 0,
+    dripfeed TINYINT(1) NOT NULL DEFAULT 0,
     is_active TINYINT(1) NOT NULL DEFAULT 1,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     KEY idx_services_category (category),
@@ -75,6 +77,9 @@ CREATE TABLE orders (
     provider_order_id VARCHAR(50) NULL,
     link VARCHAR(500) NOT NULL,
     quantity INT UNSIGNED NOT NULL,
+    runs INT UNSIGNED NULL,
+    run_interval INT UNSIGNED NULL,
+    extra TEXT NULL,
     charge DECIMAL(14, 4) NOT NULL,
     cost DECIMAL(14, 4) NOT NULL DEFAULT 0,
     refunded DECIMAL(14, 4) NOT NULL DEFAULT 0,
@@ -91,6 +96,22 @@ CREATE TABLE orders (
     CONSTRAINT fk_orders_user FOREIGN KEY (user_id) REFERENCES users(id),
     CONSTRAINT fk_orders_service FOREIGN KEY (service_id) REFERENCES services(id),
     CONSTRAINT fk_orders_provider FOREIGN KEY (provider_id) REFERENCES providers(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Refill requests sent to the provider for orders with a refill guarantee
+CREATE TABLE refills (
+    id INT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+    order_id INT UNSIGNED NOT NULL,
+    user_id INT UNSIGNED NOT NULL,
+    provider_id INT UNSIGNED NOT NULL,
+    provider_refill_id VARCHAR(50) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    KEY idx_refills_order (order_id),
+    KEY idx_refills_status (status),
+    CONSTRAINT fk_refills_order FOREIGN KEY (order_id) REFERENCES orders(id),
+    CONSTRAINT fk_refills_user FOREIGN KEY (user_id) REFERENCES users(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE order_logs (
@@ -142,6 +163,15 @@ CREATE TABLE affiliate_earnings (
     KEY idx_affiliate_referrer (referrer_id),
     CONSTRAINT fk_affiliate_referrer FOREIGN KEY (referrer_id) REFERENCES users(id),
     CONSTRAINT fk_affiliate_order FOREIGN KEY (order_id) REFERENCES orders(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE password_resets (
+    id INT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+    user_id INT UNSIGNED NOT NULL,
+    token_hash CHAR(64) NOT NULL UNIQUE,
+    expires_at DATETIME NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_password_resets_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE login_attempts (

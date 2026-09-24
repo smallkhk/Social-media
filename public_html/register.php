@@ -37,9 +37,10 @@ if (!REGISTRATION_OPEN) {
         q('INSERT INTO users (username, email, password, api_key, referral_code, referred_by) VALUES (?, ?, ?, ?, ?, ?)', [
             $username, $email, password_hash($password, PASSWORD_DEFAULT), bin2hex(random_bytes(32)), $code, $referrer,
         ]);
+        $newUserId = (int)db()->lastInsertId();
         record_attempt('register');
         unset($_SESSION['ref']);
-        login_session('user_id', (int)db()->lastInsertId());
+        login_session('user_id', $newUserId);
         flash('success', 'Welcome! Add funds to your wallet to place your first order.');
         redirect('dashboard.php');
     }

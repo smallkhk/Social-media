@@ -18,6 +18,9 @@ define('TIMEZONE', 'UTC');
 // Generate one: any 40+ random characters
 define('CRON_TOKEN', 'change-this-to-a-long-random-string');
 
+// Sender for password-reset emails. Create this mailbox in cPanel > Email Accounts so mail isn't marked as spam.
+define('MAIL_FROM', 'no-reply@yourdomain.com');
+
 // Deposits (approved manually in Admin > Payments)
 define('MIN_DEPOSIT', 5);
 define('CRYPTO_ENABLED', true);

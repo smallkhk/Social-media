@@ -15,6 +15,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             post('name'), post('category') ?: 'Other', post('description'), round((float)post('rate'), 4), round((float)post('cost'), 4),
             max(1, (int)post('min_quantity')), max(1, (int)post('max_quantity')), (int)post('provider_id'), post('provider_service_id'),
             $backup, $backup ? post('backup_provider_service_id') : null, isset($_POST['refill']) ? 1 : 0, isset($_POST['is_active']) ? 1 : 0,
+            order_type(post('type'))['name'] ?? 'Default', isset($_POST['dripfeed']) ? 1 : 0,
         ];
         if ($data[0] === '' || $data[3] <= 0 || !isset($providerNames[$data[7]]) || $data[8] === '' || $data[5] > $data[6]
             || ($backup && (!isset($providerNames[$backup]) || $data[10] === ''))) {
@@ -23,10 +24,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         if ($id) {
             q('UPDATE services SET name = ?, category = ?, description = ?, rate = ?, cost = ?, min_quantity = ?, max_quantity = ?, provider_id = ?,
-               provider_service_id = ?, backup_provider_id = ?, backup_provider_service_id = ?, refill = ?, is_active = ? WHERE id = ?', array_merge($data, [$id]));
+               provider_service_id = ?, backup_provider_id = ?, backup_provider_service_id = ?, refill = ?, is_active = ?, type = ?, dripfeed = ? WHERE id = ?', array_merge($data, [$id]));
         } else {
             q('INSERT INTO services (name, category, description, rate, cost, min_quantity, max_quantity, provider_id, provider_service_id,
-               backup_provider_id, backup_provider_service_id, refill, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', $data);
+               backup_provider_id, backup_provider_service_id, refill, is_active, type, dripfeed) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', $data);
         }
         flash('success', 'Service saved.');
     } elseif ($action === 'toggle') {
@@ -53,7 +54,7 @@ $edit = null;
 if (isset($_GET['edit'])) {
     $edit = $_GET['edit'] === 'new'
         ? ['id' => 0, 'name' => '', 'category' => '', 'description' => '', 'rate' => '', 'cost' => '', 'min_quantity' => 10, 'max_quantity' => 10000,
-           'provider_id' => 0, 'provider_service_id' => '', 'backup_provider_id' => null, 'backup_provider_service_id' => '', 'refill' => 0, 'is_active' => 1]
+           'provider_id' => 0, 'provider_service_id' => '', 'backup_provider_id' => null, 'backup_provider_service_id' => '', 'refill' => 0, 'is_active' => 1, 'type' => 'Default', 'dripfeed' => 0]
         : row('SELECT * FROM services WHERE id = ?', [(int)$_GET['edit']]);
 }
 
@@ -91,11 +92,14 @@ page_header('Services', 'admin');
         <div class="form-row">
             <div class="form-group"><label>Name</label><input type="text" name="name" value="<?= e($edit['name']) ?>" required></div>
             <div class="form-group"><label>Category</label><input type="text" name="category" value="<?= e($edit['category']) ?>" list="cats"></div>
+            <div class="form-group"><label>Type</label><select name="type">
+                <?php foreach (array_keys(ORDER_TYPES) as $t): ?><option <?= strcasecmp($t, $edit['type']) === 0 ? 'selected' : '' ?>><?= e($t) ?></option><?php endforeach; ?>
+            </select><div class="help">Must match the provider's service type</div></div>
         </div>
         <datalist id="cats"><?php foreach ($categories as $c): ?><option value="<?= e($c) ?>"><?php endforeach; ?></datalist>
         <div class="form-group"><label>Description (shown to customers)</label><textarea name="description" rows="2"><?= e($edit['description']) ?></textarea></div>
         <div class="form-row">
-            <div class="form-group"><label>Your price / 1000</label><input type="number" step="0.0001" min="0.0001" name="rate" value="<?= e($edit['rate']) ?>" required></div>
+            <div class="form-group"><label>Your price / 1000 <small>(per package for Package types)</small></label><input type="number" step="0.0001" min="0.0001" name="rate" value="<?= e($edit['rate']) ?>" required></div>
             <div class="form-group"><label>Provider cost / 1000</label><input type="number" step="0.0001" min="0" name="cost" value="<?= e($edit['cost']) ?>"></div>
             <div class="form-group"><label>Min</label><input type="number" name="min_quantity" value="<?= (int)$edit['min_quantity'] ?>" min="1"></div>
             <div class="form-group"><label>Max</label><input type="number" name="max_quantity" value="<?= (int)$edit['max_quantity'] ?>" min="1"></div>
@@ -112,7 +116,8 @@ page_header('Services', 'admin');
             <div class="form-group"><label>Backup service ID</label><input type="text" name="backup_provider_service_id" value="<?= e($edit['backup_provider_service_id']) ?>"></div>
         </div>
         <p class="help" style="margin-bottom:10px">If the main provider refuses an order (out of balance, service down), it is sent to the backup provider's equivalent service.</p>
-        <label class="checkbox"><input type="checkbox" name="refill" <?= $edit['refill'] ? 'checked' : '' ?>> Refill guarantee</label>
+        <label class="checkbox"><input type="checkbox" name="refill" <?= $edit['refill'] ? 'checked' : '' ?>> Refill guarantee (customers get a Refill button)</label>
+        <label class="checkbox"><input type="checkbox" name="dripfeed" <?= $edit['dripfeed'] ? 'checked' : '' ?>> Drip-feed allowed (Default type only)</label>
         <label class="checkbox"><input type="checkbox" name="is_active" <?= $edit['is_active'] ? 'checked' : '' ?>> Active</label>
         <p style="margin-top:14px"><button class="btn">Save</button> <a class="btn btn-light" href="<?= e(url('admin/services.php')) ?>">Cancel</a></p>
     </form>
@@ -148,7 +153,7 @@ page_header('Services', 'admin');
         <?php foreach ($services as $s): $margin = $s['rate'] > 0 && $s['cost'] > 0 ? ($s['rate'] - $s['cost']) / $s['rate'] * 100 : null; ?>
         <tr>
             <td><?= (int)$s['id'] ?></td>
-            <td><?= e($s['name']) ?><div class="help"><?= e($s['category']) ?></div></td>
+            <td><?= e($s['name']) ?><div class="help"><?= e($s['category']) ?> &middot; <?= e($s['type']) ?><?= $s['dripfeed'] ? ' &middot; drip-feed' : '' ?><?= $s['refill'] ? ' &middot; refill' : '' ?></div></td>
             <td><?= e($providerNames[$s['provider_id']] ?? '?') ?> #<?= e($s['provider_service_id']) ?>
                 <?php if ($s['backup_provider_id']): ?><div class="help">backup: <?= e($providerNames[$s['backup_provider_id']] ?? '?') ?> #<?= e($s['backup_provider_service_id']) ?></div><?php endif; ?></td>
             <td class="num"><?= money($s['rate'], 4) ?></td>

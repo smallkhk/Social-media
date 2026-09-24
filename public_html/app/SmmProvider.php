@@ -64,9 +64,10 @@ final class SmmProvider
         return $this->request('services');
     }
 
-    public function addOrder(string $serviceId, string $link, int $quantity): array
+    /** @param array $params service, link and the type's fields (quantity, comments, runs, ...) */
+    public function addOrder(array $params): array
     {
-        return $this->request('add', ['service' => $serviceId, 'link' => $link, 'quantity' => $quantity]);
+        return $this->request('add', $params);
     }
 
     public function status(string $orderId): array
@@ -83,6 +84,12 @@ final class SmmProvider
     public function refill(string $orderId): array
     {
         return $this->request('refill', ['order' => $orderId]);
+    }
+
+    /** @param string[] $refillIds up to 100 */
+    public function refillStatuses(array $refillIds): array
+    {
+        return $this->request('refill_status', ['refills' => implode(',', $refillIds)]);
     }
 
     public function balance(): array

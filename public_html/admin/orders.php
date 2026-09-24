@@ -44,7 +44,8 @@ $perPage = 50;
 $total = (int)val("SELECT COUNT(*) FROM orders o JOIN users u ON u.id = o.user_id WHERE $whereSql", $params);
 $pages = max(1, (int)ceil($total / $perPage));
 $page = min($pages, max(1, (int)($_GET['page'] ?? 1)));
-$orders = all("SELECT o.*, u.username, s.name AS service_name, p.name AS provider_name
+$orders = all("SELECT o.*, u.username, s.name AS service_name, p.name AS provider_name,
+                      (SELECT r.status FROM refills r WHERE r.order_id = o.id ORDER BY r.id DESC LIMIT 1) AS refill_status
                FROM orders o JOIN users u ON u.id = o.user_id JOIN services s ON s.id = o.service_id LEFT JOIN providers p ON p.id = o.provider_id
                WHERE $whereSql ORDER BY o.id DESC LIMIT $perPage OFFSET " . (($page - 1) * $perPage), $params);
 
@@ -83,12 +84,12 @@ page_header('Orders', 'admin');
             <td><?= (int)$o['id'] ?><div class="help"><?= e(date('m-d H:i', strtotime($o['created_at']))) ?></div></td>
             <td><?= e($o['username']) ?><?= $o['via_api'] ? ' <span class="badge">API</span>' : '' ?></td>
             <td><?= e($o['service_name']) ?></td>
-            <td class="break" style="max-width:220px"><?= e($o['link']) ?></td>
-            <td class="num"><?= number_format((int)$o['quantity']) ?><?php if ($o['remains'] !== null && $o['status'] !== 'completed'): ?><div class="help"><?= (int)$o['remains'] ?> left</div><?php endif; ?></td>
+            <td class="break" style="max-width:220px"><?= e($o['link']) ?><?= order_extra_html($o) ?></td>
+            <td class="num"><?= number_format((int)$o['quantity']) ?><?= $o['runs'] ? '<div class="help">x ' . (int)$o['runs'] . ' runs</div>' : '' ?><?php if ($o['remains'] !== null && $o['status'] !== 'completed'): ?><div class="help"><?= (int)$o['remains'] ?> left</div><?php endif; ?></td>
             <td class="num"><?= money($o['charge'], 4) ?><?php if ((float)$o['refunded'] > 0): ?><div class="help">-<?= money($o['refunded'], 4) ?></div><?php endif; ?></td>
             <td class="num"><?= money($o['cost'], 4) ?></td>
             <td><?= e($o['provider_name'] ?? '-') ?><div class="help"><?= e($o['provider_order_id'] ?? '') ?></div></td>
-            <td><?= status_badge($o['status']) ?><?php if ($o['error']): ?><div class="help"><?= e($o['error']) ?></div><?php endif; ?></td>
+            <td><?= status_badge($o['status']) ?><?php if ($o['refill_status']): ?><div class="help"><?= e(refill_label($o['refill_status'])) ?></div><?php endif; ?><?php if ($o['error']): ?><div class="help"><?= e($o['error']) ?></div><?php endif; ?></td>
             <td style="white-space:nowrap">
                 <a class="btn btn-sm btn-light" href="?<?= e(http_build_query(['log' => $o['id']] + array_intersect_key($_GET, array_flip(['status', 'q', 'page'])))) ?>">Log</a>
                 <?php if ($open): ?>

@@ -22,7 +22,10 @@ Write down the full database name, user name and password.
 
 cPanel → **phpMyAdmin** → click your database on the left → **Import** tab →
 choose `install.sql` (in this repo's `database/` folder) → **Import** (or "Go").
-You should see 10 tables.
+You should see 12 tables.
+
+> Already imported an earlier version? Import `database/upgrade-3.1.sql` once instead (it adds order types, drip-feed,
+> refills and password reset). Don't import `install.sql` again - it would fail on the existing tables.
 
 ## 4. Upload the files
 
@@ -45,6 +48,11 @@ In File Manager open `public_html/app/`, copy `config.sample.php` to **`config.p
 | `CRYPTO_WALLET` / `CRYPTO_NETWORK` | your USDT address and its network |
 | `BANK_DETAILS` | your bank account text, or set `BANK_ENABLED` to `false` |
 | `AFFILIATE_PERCENT` | commission for referrers, `0` to turn the program off |
+| `MAIL_FROM` | sender of password-reset emails, e.g. `no-reply@yourdomain.com` (see below) |
+
+**Email for "Forgot password":** in cPanel → **Email Accounts** create the mailbox you put in `MAIL_FROM`
+(e.g. `no-reply@yourdomain.com`). Sending from an address that exists on your own domain keeps the emails out of spam.
+Namecheap's default SPF/DKIM records (cPanel → Email Deliverability) should show green; click *Repair* if not.
 
 `app/` is blocked from the web by `app/.htaccess`, so the passwords in `config.php` cannot be downloaded.
 
@@ -66,6 +74,9 @@ Open `https://yourdomain.com/admin/` → you are sent to the one-time setup page
    You should see "Connection OK - balance …".
 3. Click **Import services**, filter by category, tick the services you want, set your markup % and import.
    Your selling price = MoreThanPanel's rate + markup. Re-importing later updates prices.
+   All order types are supported (Default, Package, Custom Comments, Mentions, SEO, Poll, Comment Likes/Replies,
+   Invites from Groups, …) except *Subscriptions*. The order form shows the right fields for each type automatically.
+   Services the provider marks as drip-feed or refill get those options; you can also switch them in **Admin → Services**.
 
 Any other SMM panel with the standard API v2 can be added the same way (**+ Add provider**).
 Crescitaly is pre-added but switched off; add its key if you use it.
@@ -83,7 +94,7 @@ cPanel → **Cron Jobs** → *Add New Cron Job*:
 ```
 
 This checks open orders with the providers, marks them completed/partial/canceled, refunds customers for anything not
-delivered, pays affiliate commission and updates provider balances.
+delivered, pays affiliate commission, updates the status of refill requests and updates provider balances.
 The admin dashboard warns you if orders haven't been checked for 30 minutes.
 
 If the PHP command doesn't work on your plan, use the URL form instead:
@@ -116,3 +127,5 @@ wget -q -O /dev/null "https://yourdomain.com/cron/sync.php?token=YOUR_CRON_TOKEN
 | "Your session expired" on forms | Refresh the page and try again; also check `SITE_URL` matches the domain you're using |
 | Orders stay "Processing" forever | Cron job not running (step 9). Test by opening the cron URL with your token in a browser |
 | Provider test says "Invalid API key" | Re-copy the key from the provider's API page |
+| Password-reset emails don't arrive | Check spam; make sure the `MAIL_FROM` mailbox exists in cPanel → Email Accounts and Email Deliverability is green |
+| "Refill not available: …" | The provider refused the refill (e.g. refill period over or no drop yet); the message shows their reason |

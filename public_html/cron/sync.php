@@ -1,5 +1,5 @@
 <?php
-// Checks open orders with the providers, refunds canceled/partial orders and updates provider balances.
+// Checks open orders and refills with the providers, refunds canceled/partial orders and updates provider balances.
 //
 // cPanel > Cron Jobs, every 5 minutes (recommended):
 //   /usr/local/bin/php /home/CPANELUSER/public_html/cron/sync.php >/dev/null 2>&1
@@ -25,6 +25,7 @@ if (!$lock || !flock($lock, LOCK_EX | LOCK_NB)) {
 set_time_limit(280);
 
 $stats = sync_orders();
+$stats['refills_updated'] = sync_refills();
 update_provider_balances();
 
 echo json_encode(['status' => 'ok', 'time' => date('c')] + $stats) . PHP_EOL;

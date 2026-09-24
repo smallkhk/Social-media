@@ -34,11 +34,12 @@ switch ($action) {
             $out[] = [
                 'service' => (int)$s['id'],
                 'name' => $s['name'],
-                'type' => 'Default',
+                'type' => order_type($s['type'])['name'] ?? 'Default',
                 'category' => $s['category'],
                 'rate' => number_format((float)$s['rate'], 4, '.', ''),
                 'min' => (string)$s['min_quantity'],
                 'max' => (string)$s['max_quantity'],
+                'dripfeed' => (bool)$s['dripfeed'],
                 'refill' => (bool)$s['refill'],
                 'cancel' => false,
             ];
@@ -46,7 +47,7 @@ switch ($action) {
         api_out($out);
 
     case 'add':
-        $result = place_order((int)$user['id'], (int)($in['service'] ?? 0), (string)($in['link'] ?? ''), (int)($in['quantity'] ?? 0), true);
+        $result = place_order((int)$user['id'], (int)($in['service'] ?? 0), $in, true);
         api_out($result['ok'] ? ['order' => $result['order_id']] : ['error' => $result['error']]);
 
     case 'status':
@@ -69,6 +70,32 @@ switch ($action) {
         }
         $o = row('SELECT * FROM orders WHERE id = ? AND user_id = ?', [(int)($in['order'] ?? 0), $user['id']]);
         api_out($o ? $format($o) : ['error' => 'Incorrect order ID']);
+
+    case 'refill':
+        if (isset($in['orders'])) {
+            $out = [];
+            foreach (array_slice(array_filter(array_map('intval', explode(',', (string)$in['orders']))), 0, 100) as $id) {
+                $r = request_refill((int)$user['id'], $id);
+                $out[] = ['order' => $id, 'refill' => $r['ok'] ? $r['refill_id'] : ['error' => $r['error']]];
+            }
+            api_out($out);
+        }
+        $r = request_refill((int)$user['id'], (int)($in['order'] ?? 0));
+        api_out($r['ok'] ? ['refill' => (string)$r['refill_id']] : ['error' => $r['error']]);
+
+    case 'refill_status':
+        $label = fn(string $st) => ['pending' => 'Pending', 'in_progress' => 'In progress', 'completed' => 'Completed',
+            'rejected' => 'Rejected', 'canceled' => 'Canceled'][$st] ?? 'Error';
+        if (isset($in['refills'])) {
+            $out = [];
+            foreach (array_slice(array_filter(array_map('intval', explode(',', (string)$in['refills']))), 0, 100) as $id) {
+                $st = val('SELECT status FROM refills WHERE id = ? AND user_id = ?', [$id, $user['id']]);
+                $out[] = ['refill' => $id, 'status' => $st ? $label($st) : ['error' => 'Refill not found']];
+            }
+            api_out($out);
+        }
+        $st = val('SELECT status FROM refills WHERE id = ? AND user_id = ?', [(int)($in['refill'] ?? 0), $user['id']]);
+        api_out($st ? ['status' => $label($st)] : ['error' => 'Refill not found']);
 
     case 'balance':
         api_out(['balance' => number_format((float)$user['balance'], 4, '.', ''), 'currency' => 'USD']);

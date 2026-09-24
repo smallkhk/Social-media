@@ -9,44 +9,38 @@ function order_log(int $orderId, ?int $providerId, string $action, string $messa
         [$orderId, $providerId, $action, mb_substr($message, 0, 1000)]);
 }
 
-function order_charge(array $service, int $quantity): float
-{
-    return round((float)$service['rate'] * $quantity / 1000, 4);
-}
-
 /**
  * Charge the user, then send the order to the service's provider (and its backup
  * provider if the first one refuses). Refunds automatically if both fail.
  *
+ * $input: link, quantity, and the extra fields of the service type (comments, usernames, runs, interval, ...)
+ *
  * @return array{ok: bool, order_id?: int, error?: string}
  */
-function place_order(int $userId, int $serviceId, string $link, int $quantity, bool $viaApi = false): array
+function place_order(int $userId, int $serviceId, array $input, bool $viaApi = false): array
 {
     $service = row('SELECT * FROM services WHERE id = ? AND is_active = 1', [$serviceId]);
     if (!$service) {
         return ['ok' => false, 'error' => 'Service not found'];
     }
-    $link = trim($link);
-    if ($link === '' || mb_strlen($link) > 500 || preg_match('/\s/', $link)) {
-        return ['ok' => false, 'error' => 'Enter a valid link'];
+    $order = build_order($service, $input);
+    if (!$order['ok']) {
+        return $order;
     }
-    if ($quantity < (int)$service['min_quantity'] || $quantity > (int)$service['max_quantity']) {
-        return ['ok' => false, 'error' => "Quantity must be between {$service['min_quantity']} and {$service['max_quantity']}"];
-    }
-    $charge = order_charge($service, $quantity);
-    if ($charge <= 0) {
-        return ['ok' => false, 'error' => 'This service has no price set'];
-    }
+    $charge = $order['charge'];
+    $link = $order['params']['link'];
 
     // Take the money first, atomically, so two parallel orders can't overspend the balance
-    $orderId = transaction(function () use ($userId, $service, $link, $quantity, $charge, $viaApi) {
+    $orderId = transaction(function () use ($userId, $service, $order, $link, $charge, $viaApi) {
         $taken = q("UPDATE users SET balance = balance - ? WHERE id = ? AND balance >= ? AND status = 'active'",
             [$charge, $userId, $charge])->rowCount();
         if (!$taken) {
             return null;
         }
-        q('INSERT INTO orders (user_id, service_id, link, quantity, charge, status, via_api) VALUES (?, ?, ?, ?, ?, ?, ?)',
-            [$userId, $service['id'], $link, $quantity, $charge, 'pending', $viaApi ? 1 : 0]);
+        q('INSERT INTO orders (user_id, service_id, link, quantity, runs, run_interval, extra, charge, status, via_api)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [$userId, $service['id'], $link, $order['quantity'], $order['runs'], $order['interval'],
+             $order['extra'] ? json_encode($order['extra']) : null, $charge, 'pending', $viaApi ? 1 : 0]);
         $id = (int)db()->lastInsertId();
         q('INSERT INTO transactions (user_id, amount, type, description) VALUES (?, ?, ?, ?)',
             [$userId, -$charge, 'order', "Order #$id"]);
@@ -68,9 +62,11 @@ function place_order(int $userId, int $serviceId, string $link, int $quantity, b
             order_log($orderId, $providerId, 'skip', 'Provider inactive');
             continue;
         }
-        $result = SmmProvider::fromRow($provider)->addOrder($providerServiceId, $link, $quantity);
+        $result = SmmProvider::fromRow($provider)->addOrder(['service' => $providerServiceId] + $order['params']);
         if (!empty($result['order'])) {
-            $cost = round((float)$service['cost'] * $quantity / 1000, 4);
+            $cost = order_type((string)$service['type'])['qty'] === 'none'
+                ? (float)$service['cost']
+                : round((float)$service['cost'] * $order['units'] / 1000, 4);
             if ($providerId !== (int)$service['provider_id']) {
                 $cost = 0; // backup cost unknown until the provider reports its charge
             }
@@ -166,7 +162,7 @@ function apply_provider_status(array $order, array $info): string
             complete_order($orderId);
             return 'completed';
         case 'partial':
-            $qty = max(1, (int)$order['quantity']);
+            $qty = max(1, (int)$order['quantity'] * max(1, (int)($order['runs'] ?? 1)));
             $refund = (float)$order['charge'] * min((int)$remains, $qty) / $qty;
             refund_order($orderId, $refund, 'partial', "Partial: $remains not delivered");
             return 'partial';
@@ -261,4 +257,20 @@ function status_label(string $status): string
 function status_badge(string $status): string
 {
     return '<span class="badge badge-' . e($status) . '">' . e(status_label($status)) . '</span>';
+}
+
+/** Small summary of an order's extra fields (e.g. "12 comments") for order tables. */
+function order_extra_html(array $order): string
+{
+    $extra = $order['extra'] ? json_decode((string)$order['extra'], true) : null;
+    if (!is_array($extra) || !$extra) {
+        return '';
+    }
+    $parts = [];
+    foreach ($extra as $field => $value) {
+        $label = strtolower(ORDER_FIELD_LABELS[$field][0] ?? $field);
+        $parts[] = is_int($value) && in_array($field, ['comments', 'usernames', 'hashtags', 'keywords', 'groups'], true)
+            ? "$value $label" : "$label: $value";
+    }
+    return '<div class="help">' . e(implode(', ', $parts)) . '</div>';
 }

@@ -44,7 +44,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$error) {
     $added = $updated = $skipped = 0;
     foreach ($selected as $sid) {
         $s = $byId[$sid] ?? null;
-        if (!$s || strcasecmp((string)($s['type'] ?? 'Default'), 'Default') !== 0) {
+        $type = $s ? order_type((string)($s['type'] ?? 'Default')) : null;
+        if (!$type) {
             $skipped++;
             continue;
         }
@@ -53,18 +54,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$error) {
         $fields = [
             mb_substr((string)$s['name'], 0, 255), mb_substr((string)($s['category'] ?? 'Other'), 0, 190) ?: 'Other',
             $cost, $rate, max(1, (int)$s['min']), max(1, (int)$s['max']), !empty($s['refill']) ? 1 : 0, !empty($s['cancel']) ? 1 : 0,
+            $type['name'], !empty($s['dripfeed']) ? 1 : 0,
         ];
         if (isset($existing[$sid])) {
-            q('UPDATE services SET name = ?, category = ?, cost = ?, rate = ?, min_quantity = ?, max_quantity = ?, refill = ?, cancel = ? WHERE id = ?',
+            q('UPDATE services SET name = ?, category = ?, cost = ?, rate = ?, min_quantity = ?, max_quantity = ?, refill = ?, cancel = ?, type = ?, dripfeed = ? WHERE id = ?',
                 array_merge($fields, [$existing[$sid]['id']]));
             $updated++;
         } else {
-            q('INSERT INTO services (name, category, cost, rate, min_quantity, max_quantity, refill, cancel, provider_id, provider_service_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            q('INSERT INTO services (name, category, cost, rate, min_quantity, max_quantity, refill, cancel, type, dripfeed, provider_id, provider_service_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                 array_merge($fields, [$pid, $sid]));
             $added++;
         }
     }
-    flash('success', "Imported: $added new, $updated updated" . ($skipped ? ", $skipped skipped (only 'Default' type services are supported)" : '') . '.');
+    flash('success', "Imported: $added new, $updated updated" . ($skipped ? ", $skipped skipped (Subscriptions and unknown types aren't supported)" : '') . '.');
     redirect('admin/import.php?provider=' . $pid . '&category=' . urlencode((string)($_GET['category'] ?? '')));
 }
 
@@ -100,16 +102,16 @@ page_header('Import services', 'admin');
             <label class="checkbox">Markup % <input type="number" name="markup" value="50" min="0" step="1" style="width:90px"></label>
             <button class="btn btn-sm btn-ok">Import / update selected</button>
         </div>
-        <p class="help" style="margin-bottom:10px">Your price = provider rate + markup. Services you already imported are updated with the latest provider rate. Showing <?= count($shown) ?> of <?= $total ?>.</p>
+        <p class="help" style="margin-bottom:10px">Your price = provider rate + markup (for Package types the rate is the price of the whole package). Services you already imported are updated with the latest provider rate. Showing <?= count($shown) ?> of <?= $total ?>.</p>
         <div class="table-wrap"><table>
             <tr><th></th><th>ID</th><th>Name</th><th>Category</th><th>Type</th><th class="num">Rate / 1000</th><th class="num">Min</th><th class="num">Max</th><th></th></tr>
-            <?php foreach ($shown as $s): $sid = (string)$s['service']; $isDefault = strcasecmp((string)($s['type'] ?? 'Default'), 'Default') === 0; ?>
+            <?php foreach ($shown as $s): $sid = (string)$s['service']; $supported = order_type((string)($s['type'] ?? 'Default')) !== null; ?>
             <tr>
-                <td><?php if ($isDefault): ?><input type="checkbox" name="ids[]" value="<?= e($sid) ?>" class="pick"><?php endif; ?></td>
+                <td><?php if ($supported): ?><input type="checkbox" name="ids[]" value="<?= e($sid) ?>" class="pick"><?php endif; ?></td>
                 <td><?= e($sid) ?></td>
                 <td><?= e($s['name']) ?></td>
                 <td><?= e($s['category'] ?? '') ?></td>
-                <td><?= e($s['type'] ?? 'Default') ?></td>
+                <td><?= e($s['type'] ?? 'Default') ?><?= !empty($s['dripfeed']) ? ' <span class="badge">drip-feed</span>' : '' ?><?= $supported ? '' : ' <span class="badge badge-canceled">not supported</span>' ?></td>
                 <td class="num"><?= e($s['rate']) ?></td>
                 <td class="num"><?= e($s['min']) ?></td>
                 <td class="num"><?= e($s['max']) ?></td>

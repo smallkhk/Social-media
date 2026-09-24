@@ -47,6 +47,7 @@ page_header('Log in', 'auth');
         </div>
         <button class="btn btn-block">Log in</button>
     </form>
+    <p class="foot"><a href="<?= e(url('forgot-password.php')) ?>">Forgot your password?</a></p>
     <?php if (REGISTRATION_OPEN): ?>
         <p class="foot">No account? <a href="<?= e(url('register.php')) ?>">Sign up</a></p>
     <?php endif; ?>

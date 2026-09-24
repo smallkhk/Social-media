@@ -60,8 +60,10 @@ page_header('Account');
     <div class="table-wrap"><table>
         <tr><th>action</th><th>Parameters</th><th>Returns</th></tr>
         <tr><td>services</td><td>-</td><td>service list with rate per 1000</td></tr>
-        <tr><td>add</td><td>service, link, quantity</td><td>{"order": 123}</td></tr>
+        <tr><td>add</td><td>service, link, quantity (+ runs, interval for drip-feed; comments, usernames, ... depending on the service type)</td><td>{"order": 123}</td></tr>
         <tr><td>status</td><td>order <em>or</em> orders (comma separated, max 100)</td><td>charge, start_count, status, remains, currency</td></tr>
+        <tr><td>refill</td><td>order <em>or</em> orders</td><td>{"refill": "1"}</td></tr>
+        <tr><td>refill_status</td><td>refill <em>or</em> refills</td><td>{"status": "Completed"}</td></tr>
         <tr><td>balance</td><td>-</td><td>{"balance": "10.00", "currency": "USD"}</td></tr>
     </table></div>
     <p class="help" style="margin-top:8px">Send every request as POST with <code>key</code> and <code>action</code>.</p>
