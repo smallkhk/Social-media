@@ -34,14 +34,25 @@ foreach (all('SELECT id, provider_service_id, rate FROM services WHERE provider_
     $existing[(string)$s['provider_service_id']] = $s;
 }
 
+$category = is_string($_GET['category'] ?? null) ? $_GET['category'] : '';
+$search = is_string($_GET['q'] ?? null) ? trim($_GET['q']) : '';
+$filtered = array_values(array_filter($list, fn($s) => ($category === '' || (string)($s['category'] ?? 'Other') === $category)
+    && ($search === '' || stripos($s['service'] . ' ' . $s['name'], $search) !== false)));
+$filterQuery = ['provider' => $pid, 'category' => $category, 'q' => $search];
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$error) {
+    set_time_limit(300);
     $markup = max(0, (float)post('markup', '50'));
-    $selected = array_map('strval', (array)($_POST['ids'] ?? []));
+    // "Import all" takes every service matching the current filter; otherwise only the ticked ones
+    $selected = post('mode') === 'all'
+        ? array_map(fn($s) => (string)$s['service'], $filtered)
+        : array_map('strval', (array)($_POST['ids'] ?? []));
     $byId = [];
     foreach ($list as $s) {
         $byId[(string)$s['service']] = $s;
     }
     $added = $updated = $skipped = 0;
+    db()->beginTransaction();
     foreach ($selected as $sid) {
         $s = $byId[$sid] ?? null;
         $type = $s ? order_type((string)($s['type'] ?? 'Default')) : null;
@@ -66,17 +77,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$error) {
             $added++;
         }
     }
+    db()->commit();
     flash('success', "Imported: $added new, $updated updated" . ($skipped ? ", $skipped skipped (Subscriptions and unknown types aren't supported)" : '') . '.');
-    redirect('admin/import.php?provider=' . $pid . '&category=' . urlencode((string)($_GET['category'] ?? '')));
+    redirect('admin/import.php?' . http_build_query($filterQuery + ['page' => (int)($_GET['page'] ?? 1)]));
 }
 
 $categories = array_values(array_unique(array_map(fn($s) => (string)($s['category'] ?? 'Other'), $list)));
-$category = is_string($_GET['category'] ?? null) ? $_GET['category'] : '';
-$search = is_string($_GET['q'] ?? null) ? trim($_GET['q']) : '';
-$shown = array_filter($list, fn($s) => ($category === '' || (string)($s['category'] ?? 'Other') === $category)
-    && ($search === '' || stripos($s['service'] . ' ' . $s['name'], $search) !== false));
-$total = count($shown);
-$shown = array_slice($shown, 0, 500);
+$total = count($filtered);
+$importable = count(array_filter($filtered, fn($s) => order_type((string)($s['type'] ?? 'Default')) !== null));
+$perPage = 500;
+$pages = max(1, (int)ceil($total / $perPage));
+$page = min($pages, max(1, (int)($_GET['page'] ?? 1)));
+$shown = array_slice($filtered, ($page - 1) * $perPage, $perPage);
 
 page_header('Import services', 'admin');
 ?>
@@ -95,14 +107,18 @@ page_header('Import services', 'admin');
         <button class="btn btn-sm">Filter</button>
         <a class="btn btn-sm btn-light" href="?provider=<?= $pid ?>&refresh=1">Refresh list</a>
     </form>
-    <form method="post" action="?provider=<?= $pid ?>&category=<?= e(urlencode($category)) ?>">
+    <form method="post" action="?<?= e(http_build_query($filterQuery + ['page' => $page])) ?>">
         <?= csrf_field() ?>
         <div class="filters">
-            <label class="checkbox"><input type="checkbox" id="all"> Select all shown</label>
             <label class="checkbox">Markup % <input type="number" name="markup" value="50" min="0" step="1" style="width:90px"></label>
-            <button class="btn btn-sm btn-ok">Import / update selected</button>
+            <button class="btn btn-sm btn-ok" name="mode" value="all"
+                    onclick="return confirm('Import or update all <?= $importable ?> services matching this filter?')">Import all <?= number_format($importable) ?> matching</button>
+            <span class="muted">or</span>
+            <label class="checkbox"><input type="checkbox" id="all"> Select all on this page</label>
+            <button class="btn btn-sm" name="mode" value="selected">Import / update selected</button>
         </div>
-        <p class="help" style="margin-bottom:10px">Your price = provider rate + markup (for Package types the rate is the price of the whole package). Services you already imported are updated with the latest provider rate. Showing <?= count($shown) ?> of <?= $total ?>.</p>
+        <p class="help" style="margin-bottom:10px">Your price = provider rate + markup (for Package types the rate is the price of the whole package). Services you already imported are updated with the latest provider rate.
+            <?= $total ?> services match<?= $pages > 1 ? ", page $page of $pages" : '' ?>. <?= $total - $importable ? ($total - $importable) . ' Subscriptions/unknown types are skipped.' : '' ?></p>
         <div class="table-wrap"><table>
             <tr><th></th><th>ID</th><th>Name</th><th>Category</th><th>Type</th><th class="num">Rate / 1000</th><th class="num">Min</th><th class="num">Max</th><th></th></tr>
             <?php foreach ($shown as $s): $sid = (string)$s['service']; $supported = order_type((string)($s['type'] ?? 'Default')) !== null; ?>
@@ -119,6 +135,7 @@ page_header('Import services', 'admin');
             </tr>
             <?php endforeach; ?>
         </table></div>
+        <?= pagination($page, $pages, $filterQuery) ?>
     </form>
 </div>
 <script>
