@@ -37,7 +37,7 @@ function page_header(string $title, string $area = 'user'): void
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= e($title) ?> - <?= e(SITE_NAME) ?></title>
-    <link rel="stylesheet" href="<?= e(url('assets/style.css')) ?>?v=3">
+    <link rel="stylesheet" href="<?= e(url('assets/style.css')) ?>?v=4">
 </head>
 <body class="area-<?= e($area) ?>">
 <?php if ($area !== 'auth'): ?>
