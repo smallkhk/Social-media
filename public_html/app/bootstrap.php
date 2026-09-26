@@ -2,8 +2,15 @@
 declare(strict_types=1);
 
 if (!is_file(__DIR__ . '/config.php')) {
+    // Not installed yet: send the browser to the web installer
+    if (PHP_SAPI !== 'cli' && is_file(dirname(__DIR__) . '/install.php')) {
+        $docRoot = realpath((string)($_SERVER['DOCUMENT_ROOT'] ?? '')) ?: '';
+        $base = $docRoot !== '' ? str_replace('\\', '/', substr(dirname(__DIR__), strlen($docRoot))) : '';
+        header('Location: ' . rtrim($base, '/') . '/install.php');
+        exit;
+    }
     http_response_code(500);
-    exit('Setup needed: copy app/config.sample.php to app/config.php and fill in your database details.');
+    exit('Not installed: open install.php in your browser (or copy app/config.sample.php to app/config.php).');
 }
 require __DIR__ . '/config.php';
 

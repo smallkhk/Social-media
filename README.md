@@ -4,7 +4,7 @@ An SMM reseller panel in plain PHP + MySQL, built to run on ordinary cPanel shar
 Customers top up a balance and order social media services; orders are forwarded to your provider
 (MoreThanPanel by default) through the standard SMM API v2.
 
-**Setup guide: [DEPLOY-NAMECHEAP.md](DEPLOY-NAMECHEAP.md)**
+**Setup guide: [DEPLOY-NAMECHEAP.md](DEPLOY-NAMECHEAP.md)**: upload one zip, open `install.php`, fill in one form.
 
 ## Features
 
@@ -33,9 +33,10 @@ secrets kept in `app/` which is blocked from the web.
 ## Layout
 
 ```
-database/install.sql     tables (import once with phpMyAdmin)
 database/upgrade-3.1.sql only for installs made before order types/refill/password reset
 public_html/             upload the contents of this folder to your cPanel public_html
+  install.php            web installer (creates tables, config and admin; locks itself afterwards)
+  app/install.sql        database schema used by the installer
   app/                   config, database helpers, provider client, order logic (not web-accessible)
   admin/                 admin area (first visit creates the admin account)
   api/v2.php             customer API
