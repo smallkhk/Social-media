@@ -33,7 +33,7 @@ If a requirement shows a red ✗, go to cPanel → **Select PHP Version**, choos
 
 ## 5. Add the cron job (cPanel → Cron Jobs)
 
-The installer shows the exact command. Choose **Once Per Five Minutes** and paste it. It looks like:
+The installer and the admin dashboard show the exact command for your server (including subdomains). Choose **Once Per Five Minutes** and paste it. It looks like:
 
 ```
 /usr/local/bin/php /home/cpaneluser/public_html/cron/sync.php >/dev/null 2>&1

@@ -22,7 +22,10 @@ $openOrders = (int)val("SELECT COUNT(*) FROM orders WHERE status IN ('pending','
 $users = (int)val('SELECT COUNT(*) FROM users');
 $userBalances = (float)val('SELECT COALESCE(SUM(balance), 0) FROM users');
 $providers = all('SELECT * FROM providers WHERE is_active = 1 ORDER BY name');
-$lastSync = val("SELECT MIN(updated_at) FROM orders WHERE status IN ('pending','processing','in_progress')");
+$cronLast = (int)(settings_all()['cron_last_run'] ?? 0);
+$cronOk = $cronLast > time() - 20 * 60;
+$cronPhp = '/usr/local/bin/php ' . realpath(__DIR__ . '/../cron/sync.php') . ' >/dev/null 2>&1';
+$cronUrl = 'wget -q -O /dev/null "' . url('cron/sync.php?token=' . urlencode(CRON_TOKEN)) . '"';
 
 page_header('Admin dashboard', 'admin');
 ?>
@@ -63,8 +66,19 @@ page_header('Admin dashboard', 'admin');
             <?php if ($p['balance_checked_at']): ?><div class="help">checked <?= e($p['balance_checked_at']) ?></div><?php endif; ?></div>
     <?php endforeach; ?>
 </div>
-<?php if ($openOrders && $lastSync && strtotime($lastSync) < time() - 1800): ?>
-    <div class="alert alert-error">Open orders haven't been checked for over 30 minutes. Is the cron job set up? (see DEPLOY-NAMECHEAP.md)</div>
+<?php if (!$cronOk): ?>
+<div class="card" style="border-color:var(--bad)">
+    <h2 style="color:var(--bad)">Cron job not running<?= $cronLast ? ' - last run ' . e(date('Y-m-d H:i', $cronLast)) : '' ?></h2>
+    <p style="margin-bottom:10px">Without it, orders stay "Processing", canceled orders aren't refunded and USDT deposits aren't credited.
+        In cPanel &rarr; <strong>Cron Jobs</strong> &rarr; Common Settings: <strong>Once Per Five Minutes</strong>, then paste this into <strong>Command</strong>:</p>
+    <div class="code" id="cron-cmd"><?= e($cronPhp) ?></div>
+    <button type="button" class="btn btn-sm btn-light" style="margin-top:6px" onclick="navigator.clipboard.writeText(document.getElementById('cron-cmd').textContent).then(()=>this.textContent='Copied')">Copy command</button>
+    <p class="help" style="margin-top:12px">If it still shows as not running after 10 minutes, delete that job and use this command instead:</p>
+    <div class="code" id="cron-url"><?= e($cronUrl) ?></div>
+    <button type="button" class="btn btn-sm btn-light" style="margin-top:6px" onclick="navigator.clipboard.writeText(document.getElementById('cron-url').textContent).then(()=>this.textContent='Copied')">Copy command</button>
+</div>
+<?php else: ?>
+    <p class="help" style="margin-bottom:12px">Cron job OK - last run <?= e(date('H:i', $cronLast)) ?>.</p>
 <?php endif; ?>
 
 <div class="grid-2">

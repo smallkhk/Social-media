@@ -28,5 +28,6 @@ $stats = sync_orders();
 $stats['refills_updated'] = sync_refills();
 $stats['deposits'] = sync_deposits();
 update_provider_balances();
+save_settings(['cron_last_run' => (string)time()]);
 
 echo json_encode(['status' => 'ok', 'time' => date('c')] + $stats) . PHP_EOL;
