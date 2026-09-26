@@ -182,6 +182,37 @@ CREATE TABLE login_attempts (
     KEY idx_login_attempts (ip, scope, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Settings edited in Admin > Settings (override app/config.php)
+CREATE TABLE settings (
+    name VARCHAR(64) PRIMARY KEY,
+    value TEXT NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE tickets (
+    id INT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+    user_id INT UNSIGNED NOT NULL,
+    subject VARCHAR(190) NOT NULL,
+    order_id INT UNSIGNED NULL,
+    status ENUM('open', 'answered', 'closed') NOT NULL DEFAULT 'open',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    KEY idx_tickets_user (user_id),
+    KEY idx_tickets_status (status),
+    CONSTRAINT fk_tickets_user FOREIGN KEY (user_id) REFERENCES users(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE ticket_messages (
+    id INT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+    ticket_id INT UNSIGNED NOT NULL,
+    from_admin TINYINT(1) NOT NULL DEFAULT 0,
+    message TEXT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_ticket_messages_ticket (ticket_id),
+    CONSTRAINT fk_ticket_messages_ticket FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO settings (name, value) VALUES ('schema_version', '4');
+
 -- Providers (add your API keys in Admin > Providers)
 INSERT INTO providers (name, api_url, api_key, is_active) VALUES
 ('MoreThanPanel', 'https://morethanpanel.com/api/v2', '', 1),

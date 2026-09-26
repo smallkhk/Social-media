@@ -46,10 +46,17 @@ It updates order statuses, refunds canceled/partial orders and tracks refills. W
 `https://yourdomain.com/admin/` → **Providers** → (paste the MoreThanPanel key if you skipped it) → **Import services** →
 tick services, choose your markup %, import. Your price = MoreThanPanel's rate + markup.
 
-## 7. Optional
+## 7. Admin → Settings
 
-- **Password-reset emails:** cPanel → Email Accounts → create the sender mailbox shown in the installer (e.g. `no-reply@yourdomain.com`).
-- **Other settings** (minimum deposit, affiliate %, payment details): edit `public_html/app/config.php` in File Manager.
+Everything you'll want to change later is here, no file editing:
+
+- **Payments:** USDT wallet address and network, bank details, minimum deposit
+- **Email:** sender address and SMTP. Create the mailbox in cPanel → Email Accounts, then for SMTP use
+  host `mail.yourdomain.com`, port `465`, SSL, and that mailbox's address + password. Press **Send test email** to check.
+- **Support contacts:** email, WhatsApp, Telegram and a note, shown on the customer Support page
+- **General:** site name, open/close sign-ups, affiliate commission
+
+Customers open tickets from **Support**; you answer them in **Admin → Tickets** (they get an email when you reply).
 
 ## Test before opening to customers
 

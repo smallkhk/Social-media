@@ -30,6 +30,12 @@ page_header('Admin dashboard', 'admin');
 <?php if ($pendingPayments): ?>
     <div class="alert alert-info"><?= $pendingPayments ?> deposit(s) waiting for review. <a href="<?= e(url('admin/payments.php')) ?>">Review now</a></div>
 <?php endif; ?>
+<?php if ($openTicketCount = (int)val("SELECT COUNT(*) FROM tickets WHERE status = 'open'")): ?>
+    <div class="alert alert-info"><?= $openTicketCount ?> support ticket(s) waiting for a reply. <a href="<?= e(url('admin/tickets.php?status=open')) ?>">Answer now</a></div>
+<?php endif; ?>
+<?php if (cfg('CRYPTO_ENABLED') && in_array(cfg('CRYPTO_WALLET'), ['', 'your-usdt-wallet-address'], true)): ?>
+    <div class="alert alert-error">Your crypto wallet address isn't set. <a href="<?= e(url('admin/settings.php')) ?>">Add it in Settings</a></div>
+<?php endif; ?>
 <?php foreach ($providers as $p): ?>
     <?php if ($p['api_key'] === ''): ?>
         <div class="alert alert-error">Provider "<?= e($p['name']) ?>" has no API key. <a href="<?= e(url('admin/providers.php?edit=' . (int)$p['id'])) ?>">Add it</a></div>

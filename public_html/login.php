@@ -33,7 +33,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 page_header('Log in', 'auth');
 ?>
 <div class="auth-card">
-    <h1><?= e(SITE_NAME) ?></h1>
+    <h1><?= e(cfg('SITE_NAME')) ?></h1>
     <?php if ($error): ?><div class="alert alert-error"><?= e($error) ?></div><?php endif; ?>
     <form method="post">
         <?= csrf_field() ?>
@@ -48,7 +48,7 @@ page_header('Log in', 'auth');
         <button class="btn btn-block">Log in</button>
     </form>
     <p class="foot"><a href="<?= e(url('forgot-password.php')) ?>">Forgot your password?</a></p>
-    <?php if (REGISTRATION_OPEN): ?>
+    <?php if (cfg('REGISTRATION_OPEN')): ?>
         <p class="foot">No account? <a href="<?= e(url('register.php')) ?>">Sign up</a></p>
     <?php endif; ?>
 </div>

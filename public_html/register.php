@@ -9,7 +9,7 @@ if (isset($_GET['ref']) && is_string($_GET['ref'])) {
 }
 
 $error = '';
-if (!REGISTRATION_OPEN) {
+if (!cfg('REGISTRATION_OPEN')) {
     $error = 'Registration is currently closed.';
 } elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = post('username');
@@ -51,7 +51,7 @@ page_header('Sign up', 'auth');
 <div class="auth-card">
     <h1>Create account</h1>
     <?php if ($error): ?><div class="alert alert-error"><?= e($error) ?></div><?php endif; ?>
-    <?php if (REGISTRATION_OPEN): ?>
+    <?php if (cfg('REGISTRATION_OPEN')): ?>
     <form method="post">
         <?= csrf_field() ?>
         <div class="form-group">

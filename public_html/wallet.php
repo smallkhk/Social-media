@@ -3,10 +3,10 @@ require __DIR__ . '/app/bootstrap.php';
 $user = require_user();
 
 $methods = [];
-if (CRYPTO_ENABLED) {
-    $methods['crypto'] = 'Crypto (' . CRYPTO_NETWORK . ')';
+if (cfg('CRYPTO_ENABLED')) {
+    $methods['crypto'] = 'Crypto (' . cfg('CRYPTO_NETWORK') . ')';
 }
-if (BANK_ENABLED) {
+if (cfg('BANK_ENABLED')) {
     $methods['bank'] = 'Bank transfer';
 }
 
@@ -18,8 +18,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (!isset($methods[$method])) {
         $error = 'Choose a payment method.';
-    } elseif ($amount < MIN_DEPOSIT || $amount > 100000) {
-        $error = 'Minimum deposit is ' . money(MIN_DEPOSIT) . '.';
+    } elseif ($amount < cfg('MIN_DEPOSIT') || $amount > 100000) {
+        $error = 'Minimum deposit is ' . money(cfg('MIN_DEPOSIT')) . '.';
     } elseif (strlen($reference) < 4 || strlen($reference) > 255) {
         $error = $method === 'crypto' ? 'Paste the transaction hash (TXID).' : 'Enter your transfer reference.';
     } elseif ((int)val("SELECT COUNT(*) FROM payments WHERE user_id = ? AND status = 'pending'", [$user['id']]) >= 5) {
@@ -47,15 +47,15 @@ page_header('Add funds');
         <p class="muted">No payment methods are enabled. Please contact support.</p>
     <?php else: ?>
     <h2>1. Send the payment</h2>
-    <?php if (CRYPTO_ENABLED): ?>
-        <label>Crypto - <?= e(CRYPTO_NETWORK) ?></label>
-        <div class="code" style="margin-bottom:6px"><?= e(CRYPTO_WALLET) ?></div>
+    <?php if (cfg('CRYPTO_ENABLED')): ?>
+        <label>Crypto - <?= e(cfg('CRYPTO_NETWORK')) ?></label>
+        <div class="code" style="margin-bottom:6px"><?= e(cfg('CRYPTO_WALLET')) ?></div>
         <p class="help" style="margin-bottom:14px">Send only on this network. Payments on the wrong network are lost.</p>
     <?php endif; ?>
-    <?php if (BANK_ENABLED): ?>
+    <?php if (cfg('BANK_ENABLED')): ?>
         <label>Bank transfer</label>
-        <div class="code" style="margin-bottom:6px"><?= e(BANK_DETAILS) ?></div>
-        <p class="help" style="margin-bottom:14px">Use your username <strong><?= e($user['username']) ?></strong> as the transfer note.<?= BANK_RATE_NOTE ? ' Rate: ' . e(BANK_RATE_NOTE) : '' ?></p>
+        <div class="code" style="margin-bottom:6px"><?= e(cfg('BANK_DETAILS')) ?></div>
+        <p class="help" style="margin-bottom:14px">Use your username <strong><?= e($user['username']) ?></strong> as the transfer note.<?= cfg('BANK_RATE_NOTE') ? ' Rate: ' . e(cfg('BANK_RATE_NOTE')) : '' ?></p>
     <?php endif; ?>
 
     <h2>2. Tell us about it</h2>
@@ -72,7 +72,7 @@ page_header('Add funds');
         </div>
         <div class="form-group">
             <label for="amount">Amount (USD)</label>
-            <input type="number" id="amount" name="amount" step="0.01" min="<?= e(MIN_DEPOSIT) ?>" value="<?= e(post('amount')) ?>" required>
+            <input type="number" id="amount" name="amount" step="0.01" min="<?= e(cfg('MIN_DEPOSIT')) ?>" value="<?= e(post('amount')) ?>" required>
         </div>
         <div class="form-group">
             <label for="reference">Transaction hash / transfer reference</label>

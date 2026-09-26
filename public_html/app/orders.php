@@ -123,14 +123,14 @@ function complete_order(int $orderId): void
 /** Credit the referrer's affiliate balance once per finished order (call inside a transaction). */
 function pay_affiliate(int $orderId): void
 {
-    if (AFFILIATE_PERCENT <= 0) {
+    if (cfg('AFFILIATE_PERCENT') <= 0) {
         return;
     }
     $o = row('SELECT o.charge, o.refunded, u.referred_by FROM orders o JOIN users u ON u.id = o.user_id WHERE o.id = ?', [$orderId]);
     if (!$o || !$o['referred_by']) {
         return;
     }
-    $amount = round(((float)$o['charge'] - (float)$o['refunded']) * AFFILIATE_PERCENT / 100, 4);
+    $amount = round(((float)$o['charge'] - (float)$o['refunded']) * cfg('AFFILIATE_PERCENT') / 100, 4);
     if ($amount <= 0) {
         return;
     }

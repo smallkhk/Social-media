@@ -19,6 +19,7 @@ ini_set('display_errors', DEBUG ? '1' : '0');
 ini_set('log_errors', '1');
 date_default_timezone_set(TIMEZONE);
 
+require __DIR__ . '/settings.php';
 require __DIR__ . '/SmmProvider.php';
 require __DIR__ . '/order_types.php';
 require __DIR__ . '/orders.php';

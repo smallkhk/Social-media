@@ -14,9 +14,10 @@ function page_header(string $title, string $area = 'user'): void
             'orders.php' => 'Orders',
             'wallet.php' => 'Add funds',
             'affiliate.php' => 'Affiliate',
+            'support.php' => 'Support',
             'account.php' => 'Account',
         ];
-        if (AFFILIATE_PERCENT <= 0) {
+        if (cfg('AFFILIATE_PERCENT') <= 0) {
             unset($links['affiliate.php']);
         }
     } elseif ($area === 'admin') {
@@ -27,7 +28,13 @@ function page_header(string $title, string $area = 'user'): void
             'admin/users.php' => 'Users',
             'admin/services.php' => 'Services',
             'admin/providers.php' => 'Providers',
+            'admin/tickets.php' => 'Tickets',
+            'admin/settings.php' => 'Settings',
         ];
+        $openTickets = (int)val("SELECT COUNT(*) FROM tickets WHERE status = 'open'");
+        if ($openTickets) {
+            $links['admin/tickets.php'] .= " ($openTickets)";
+        }
     }
     $current = basename($_SERVER['SCRIPT_NAME'] ?? '');
     ?>
@@ -36,13 +43,13 @@ function page_header(string $title, string $area = 'user'): void
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?= e($title) ?> - <?= e(SITE_NAME) ?></title>
-    <link rel="stylesheet" href="<?= e(url('assets/style.css')) ?>?v=4">
+    <title><?= e($title) ?> - <?= e(cfg('SITE_NAME')) ?></title>
+    <link rel="stylesheet" href="<?= e(url('assets/style.css')) ?>?v=5">
 </head>
 <body class="area-<?= e($area) ?>">
 <?php if ($area !== 'auth'): ?>
 <header class="topbar">
-    <a class="brand" href="<?= e(url($area === 'admin' ? 'admin/index.php' : 'dashboard.php')) ?>"><?= e(SITE_NAME) ?><?= $area === 'admin' ? ' <small>Admin</small>' : '' ?></a>
+    <a class="brand" href="<?= e(url($area === 'admin' ? 'admin/index.php' : 'dashboard.php')) ?>"><?= e(cfg('SITE_NAME')) ?><?= $area === 'admin' ? ' <small>Admin</small>' : '' ?></a>
     <input type="checkbox" id="nav-toggle" hidden>
     <label for="nav-toggle" class="nav-toggle" aria-label="Menu">&#9776;</label>
     <nav>

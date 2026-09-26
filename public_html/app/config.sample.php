@@ -1,5 +1,7 @@
 <?php
 // Copy this file to config.php (same folder) and fill in your values.
+// Payment, email/SMTP, support, affiliate and sign-up options below are only starting values:
+// change them in Admin > Settings (saved values there override this file).
 // app/ is blocked from web access by app/.htaccess.
 
 // Database (cPanel > MySQL Databases). On cPanel the names are prefixed: cpaneluser_dbname
