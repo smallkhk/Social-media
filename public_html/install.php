@@ -71,6 +71,14 @@ if (!$installed && $requirementsOk && ($_SERVER['REQUEST_METHOD'] ?? '') === 'PO
     if (strlen($adminPass) < 10) {
         $errors[] = 'Admin password must be at least 10 characters.';
     }
+    $bscWallet = field('bsc_wallet');
+    $trcWallet = field('trc_wallet');
+    if ($bscWallet !== '' && !preg_match('/^0x[0-9a-fA-F]{40}$/', $bscWallet)) {
+        $errors[] = 'The USDT BEP-20 address must start with 0x followed by 40 characters.';
+    }
+    if ($trcWallet !== '' && !preg_match('/^T[1-9A-HJ-NP-Za-km-z]{33}$/', $trcWallet)) {
+        $errors[] = 'The USDT TRC-20 address must start with T and have 34 characters.';
+    }
 
     $pdo = null;
     if (!$errors) {
@@ -104,6 +112,11 @@ if (!$installed && $requirementsOk && ($_SERVER['REQUEST_METHOD'] ?? '') === 'PO
 
             $pdo->prepare('INSERT INTO admins (email, password) VALUES (?, ?)')
                 ->execute([$adminEmail, password_hash($adminPass, PASSWORD_DEFAULT)]);
+            $setting = $pdo->prepare('REPLACE INTO settings (name, value) VALUES (?, ?)');
+            foreach (['USDT_BSC' => $bscWallet, 'USDT_TRC' => $trcWallet] as $prefix => $wallet) {
+                $setting->execute([$prefix . '_WALLET', $wallet]);
+                $setting->execute([$prefix . '_ENABLED', $wallet !== '' ? '1' : '0']);
+            }
             if (field('mtp_key') !== '') {
                 $pdo->prepare("UPDATE providers SET api_key = ? WHERE name = 'MoreThanPanel'")->execute([field('mtp_key')]);
             }
@@ -118,9 +131,7 @@ if (!$installed && $requirementsOk && ($_SERVER['REQUEST_METHOD'] ?? '') === 'PO
                 'SITE_URL' => $siteUrl,
                 'CRON_TOKEN' => $cronToken,
                 'MAIL_FROM' => field('mail_from') ?: 'no-reply@' . $mailDomain,
-                'CRYPTO_ENABLED' => field('crypto_wallet') !== '',
-                'CRYPTO_WALLET' => field('crypto_wallet'),
-                'CRYPTO_NETWORK' => field('crypto_network', 'USDT (TRC-20)') ?: 'USDT (TRC-20)',
+                'CRYPTO_ENABLED' => false,
                 'BANK_ENABLED' => field('bank_details') !== '',
                 'BANK_DETAILS' => str_replace("\r\n", "\n", field('bank_details')),
             ]);
@@ -222,11 +233,10 @@ if (!$installed && $requirementsOk && ($_SERVER['REQUEST_METHOD'] ?? '') === 'PO
             <div class="form-group"><label>API key (optional, can be added later)</label><input type="text" name="mtp_key" value="<?= h(field('mtp_key')) ?>" placeholder="From morethanpanel.com &rarr; API page"></div>
         </fieldset>
         <fieldset>
-            <legend>How customers pay you (optional, editable later in app/config.php)</legend>
-            <div class="form-row">
-                <div class="form-group"><label>USDT wallet address</label><input type="text" name="crypto_wallet" value="<?= h(field('crypto_wallet')) ?>"></div>
-                <div class="form-group"><label>Network</label><input type="text" name="crypto_network" value="<?= h(field('crypto_network', 'USDT (TRC-20)')) ?>"></div>
-            </div>
+            <legend>How customers pay you (optional, editable later in Admin &rarr; Settings)</legend>
+            <p class="help" style="margin-bottom:10px">USDT deposits are confirmed on the blockchain and credited automatically. Fill in one or both.</p>
+            <div class="form-group"><label>USDT BEP-20 (BSC) address</label><input type="text" name="bsc_wallet" value="<?= h(field('bsc_wallet')) ?>" placeholder="0x..."></div>
+            <div class="form-group"><label>USDT TRC-20 (TRON) address</label><input type="text" name="trc_wallet" value="<?= h(field('trc_wallet')) ?>" placeholder="T..."></div>
             <div class="form-group"><label>Bank transfer details (leave empty to disable)</label>
                 <textarea name="bank_details" rows="3" placeholder="Bank: ...&#10;Account name: ...&#10;Account number: ..."><?= h(field('bank_details')) ?></textarea></div>
             <div class="form-group"><label>Email sender for password resets</label><input type="email" name="mail_from" value="<?= h(field('mail_from', 'no-reply@' . $mailDomain)) ?>">

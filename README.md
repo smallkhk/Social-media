@@ -9,7 +9,8 @@ Customers top up a balance and order social media services; orders are forwarded
 ## Features
 
 - **Customers**: sign up, forgot-password email, browse services, place orders with a live price, order history,
-  refill button for services with a refill guarantee, deposit requests (crypto / bank transfer), balance history,
+  refill button for services with a refill guarantee, automatic USDT deposits (BEP-20 / TRC-20, confirmed on-chain),
+  bank transfer deposits, support tickets, balance history,
   API key, affiliate link.
 - **All SMM order types** except Subscriptions: Default (with optional drip-feed), Package, SEO, Custom Comments,
   Custom Comments Package, Mentions (+ with Hashtags, Custom List, Hashtag), Comment Likes, Comment Replies, Poll,

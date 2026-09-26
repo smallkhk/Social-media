@@ -25,6 +25,7 @@ require __DIR__ . '/order_types.php';
 require __DIR__ . '/orders.php';
 require __DIR__ . '/refills.php';
 require __DIR__ . '/mail.php';
+require __DIR__ . '/crypto.php';
 require __DIR__ . '/layout.php';
 
 const IS_CLI = PHP_SAPI === 'cli';

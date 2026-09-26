@@ -15,9 +15,21 @@ const SETTING_DEFAULTS = [
     'SUPPORT_WHATSAPP' => '',
     'SUPPORT_TELEGRAM' => '',
     'SUPPORT_NOTE' => '',
+    'USDT_BSC_ENABLED' => false,
+    'USDT_BSC_WALLET' => '',
+    'USDT_TRC_ENABLED' => false,
+    'USDT_TRC_WALLET' => '',
+    'TRONGRID_API_KEY' => '',
+    'BSC_RPC_URL' => '',
 ];
 
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
+
+function column_exists(string $table, string $column): bool
+{
+    return (bool)val('SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?',
+        [$table, $column]);
+}
 
 /** Tables added after the first release; created automatically on existing installs. */
 function migrate_schema(): void
@@ -48,6 +60,27 @@ function migrate_schema(): void
         KEY idx_ticket_messages_ticket (ticket_id),
         CONSTRAINT fk_ticket_messages_ticket FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    // v5: automatic crypto deposits
+    foreach ([
+        'needs_review' => 'TINYINT(1) NOT NULL DEFAULT 0',
+        'check_count' => 'INT UNSIGNED NOT NULL DEFAULT 0',
+        'checked_at' => 'TIMESTAMP NULL',
+    ] as $column => $definition) {
+        if (!column_exists('payments', $column)) {
+            $pdo->exec("ALTER TABLE payments ADD COLUMN $column $definition");
+        }
+    }
+    // Carry an older single crypto wallet over to the matching network
+    $saved = array_column(all('SELECT name, value FROM settings'), 'value', 'name');
+    $legacy = trim((string)($saved['CRYPTO_WALLET'] ?? (defined('CRYPTO_WALLET') ? CRYPTO_WALLET : '')));
+    $legacyOn = ($saved['CRYPTO_ENABLED'] ?? (defined('CRYPTO_ENABLED') && CRYPTO_ENABLED ? '1' : '0')) === '1';
+    $network = preg_match('/^0x[0-9a-fA-F]{40}$/', $legacy) ? 'BSC' : (preg_match('/^T[1-9A-HJ-NP-Za-km-z]{33}$/', $legacy) ? 'TRC' : null);
+    if ($network && !isset($saved["USDT_{$network}_WALLET"])) {
+        $stmt = $pdo->prepare('REPLACE INTO settings (name, value) VALUES (?, ?)');
+        $stmt->execute(["USDT_{$network}_WALLET", $legacy]);
+        $stmt->execute(["USDT_{$network}_ENABLED", $legacyOn ? '1' : '0']);
+    }
+
     $pdo->prepare('REPLACE INTO settings (name, value) VALUES (?, ?)')->execute(['schema_version', (string)SCHEMA_VERSION]);
 }
 

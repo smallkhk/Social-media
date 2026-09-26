@@ -125,7 +125,7 @@ CREATE TABLE order_logs (
     CONSTRAINT fk_order_logs_order FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Deposit requests (crypto / bank transfer), approved manually by an admin
+-- Deposits: USDT (usdt_bsc / usdt_trc, confirmed automatically) and bank transfers (approved by an admin)
 CREATE TABLE payments (
     id INT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
     user_id INT UNSIGNED NOT NULL,
@@ -134,6 +134,9 @@ CREATE TABLE payments (
     reference VARCHAR(255) NOT NULL,
     status ENUM('pending', 'approved', 'rejected') NOT NULL DEFAULT 'pending',
     admin_note VARCHAR(255) NULL,
+    needs_review TINYINT(1) NOT NULL DEFAULT 0,
+    check_count INT UNSIGNED NOT NULL DEFAULT 0,
+    checked_at TIMESTAMP NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     processed_at TIMESTAMP NULL,
     UNIQUE KEY uq_payments_reference (method, reference),
@@ -211,7 +214,7 @@ CREATE TABLE ticket_messages (
     CONSTRAINT fk_ticket_messages_ticket FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-INSERT INTO settings (name, value) VALUES ('schema_version', '4');
+INSERT INTO settings (name, value) VALUES ('schema_version', '5');
 
 -- Providers (add your API keys in Admin > Providers)
 INSERT INTO providers (name, api_url, api_key, is_active) VALUES

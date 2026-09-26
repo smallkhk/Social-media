@@ -117,3 +117,7 @@ input[type=search] { width: 100%; padding: 10px 12px; border: 1px solid var(--bo
 .msg-user { background: #eef0fd; align-self: flex-end; }
 .msg-admin { background: var(--bg); align-self: flex-start; }
 .msg-head { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+
+/* Crypto deposit */
+.pay-amount { font-size: 28px; font-weight: 800; color: var(--brand-dark); margin: 4px 0 8px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+#qr img, #qr canvas { border: 8px solid #fff; border-radius: 6px; box-shadow: 0 0 0 1px var(--border); }

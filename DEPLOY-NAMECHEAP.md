@@ -50,7 +50,10 @@ tick services, choose your markup %, import. Your price = MoreThanPanel's rate +
 
 Everything you'll want to change later is here, no file editing:
 
-- **Payments:** USDT wallet address and network, bank details, minimum deposit
+- **Payments:** your USDT BEP-20 (BSC) and/or TRC-20 (TRON) address, bank details, minimum deposit.
+  USDT deposits are credited **automatically**: the customer gets an exact amount (e.g. 25.37 USDT), and the panel
+  confirms the transfer on the blockchain (TRC-20 is found by itself; for BEP-20 the customer pastes the transaction hash).
+  A wrong amount or a transfer that stays unconfirmed is flagged **Review** in Admin → Payments. Bank transfers are approved by you.
 - **Email:** sender address and SMTP. Create the mailbox in cPanel → Email Accounts, then for SMTP use
   host `mail.yourdomain.com`, port `465`, SSL, and that mailbox's address + password. Press **Send test email** to check.
 - **Support contacts:** email, WhatsApp, Telegram and a note, shown on the customer Support page

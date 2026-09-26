@@ -26,6 +26,7 @@ set_time_limit(280);
 
 $stats = sync_orders();
 $stats['refills_updated'] = sync_refills();
+$stats['deposits'] = sync_deposits();
 update_provider_balances();
 
 echo json_encode(['status' => 'ok', 'time' => date('c')] + $stats) . PHP_EOL;

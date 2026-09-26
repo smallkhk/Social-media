@@ -2,10 +2,10 @@
 require __DIR__ . '/../app/bootstrap.php';
 $admin = require_admin();
 
-$text = ['SITE_NAME', 'CRYPTO_WALLET', 'CRYPTO_NETWORK', 'BANK_DETAILS', 'BANK_RATE_NOTE', 'MAIL_FROM',
+$text = ['SITE_NAME', 'USDT_BSC_WALLET', 'USDT_TRC_WALLET', 'TRONGRID_API_KEY', 'BSC_RPC_URL', 'BANK_DETAILS', 'BANK_RATE_NOTE', 'MAIL_FROM',
     'SMTP_HOST', 'SMTP_USER', 'SUPPORT_EMAIL', 'SUPPORT_WHATSAPP', 'SUPPORT_TELEGRAM', 'SUPPORT_NOTE'];
 $numbers = ['MIN_DEPOSIT', 'AFFILIATE_PERCENT', 'AFFILIATE_MIN_TRANSFER', 'SMTP_PORT'];
-$flags = ['CRYPTO_ENABLED', 'BANK_ENABLED', 'REGISTRATION_OPEN'];
+$flags = ['USDT_BSC_ENABLED', 'USDT_TRC_ENABLED', 'BANK_ENABLED', 'REGISTRATION_OPEN'];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (post('action') === 'test_mail') {
@@ -40,8 +40,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         flash('error', 'Sender email is not a valid address.');
     } elseif ($values['SUPPORT_EMAIL'] !== '' && !filter_var($values['SUPPORT_EMAIL'], FILTER_VALIDATE_EMAIL)) {
         flash('error', 'Support email is not a valid address.');
-    } elseif ($values['CRYPTO_ENABLED'] && $values['CRYPTO_WALLET'] === '') {
-        flash('error', 'Enter a wallet address or switch crypto payments off.');
+    } elseif ($values['USDT_BSC_ENABLED'] && !bsc_address_valid($values['USDT_BSC_WALLET'])) {
+        flash('error', 'The BEP-20 (BSC) address must start with 0x followed by 40 characters. Copy it again from your wallet.');
+    } elseif ($values['USDT_TRC_ENABLED'] && tron_address_hex($values['USDT_TRC_WALLET']) === null) {
+        flash('error', 'The TRC-20 (TRON) address is not valid (it starts with T and has 34 characters). Copy it again from your wallet.');
+    } elseif ($values['BSC_RPC_URL'] !== '' && !preg_match('#^https?://#', $values['BSC_RPC_URL'])) {
+        flash('error', 'The BSC RPC address must start with https://');
     } elseif ($values['BANK_ENABLED'] && $values['BANK_DETAILS'] === '') {
         flash('error', 'Enter bank details or switch bank transfer off.');
     } else {
@@ -62,9 +66,18 @@ page_header('Settings', 'admin');
 <div>
     <div class="card" id="payments">
         <h2>Payments (Add funds page)</h2>
-        <label class="checkbox"><input type="checkbox" name="CRYPTO_ENABLED" <?= $v('CRYPTO_ENABLED') ? 'checked' : '' ?>> Accept crypto</label>
-        <div class="form-group" style="margin-top:10px"><label>Wallet address</label><input type="text" name="CRYPTO_WALLET" value="<?= e($v('CRYPTO_WALLET')) ?>" placeholder="Your USDT address"></div>
-        <div class="form-group"><label>Network (shown to customers)</label><input type="text" name="CRYPTO_NETWORK" value="<?= e($v('CRYPTO_NETWORK')) ?>" placeholder="USDT (TRC-20)"></div>
+        <p class="help" style="margin-bottom:10px">USDT deposits are checked on the blockchain and credited automatically.
+            Use addresses from a wallet you control (Trust Wallet, MetaMask, TronLink, or an exchange deposit address that accepts that network).</p>
+        <label class="checkbox"><input type="checkbox" name="USDT_BSC_ENABLED" <?= $v('USDT_BSC_ENABLED') ? 'checked' : '' ?>> Accept USDT BEP-20 (BSC)</label>
+        <div class="form-group" style="margin-top:6px"><input type="text" name="USDT_BSC_WALLET" value="<?= e($v('USDT_BSC_WALLET')) ?>" placeholder="0x... your BSC address"></div>
+        <label class="checkbox"><input type="checkbox" name="USDT_TRC_ENABLED" <?= $v('USDT_TRC_ENABLED') ? 'checked' : '' ?>> Accept USDT TRC-20 (TRON)</label>
+        <div class="form-group" style="margin-top:6px"><input type="text" name="USDT_TRC_WALLET" value="<?= e($v('USDT_TRC_WALLET')) ?>" placeholder="T... your TRON address"></div>
+        <details style="margin-bottom:14px"><summary class="help" style="cursor:pointer">Advanced (optional)</summary>
+            <div class="form-group" style="margin-top:8px"><label>TronGrid API key</label><input type="text" name="TRONGRID_API_KEY" value="<?= e($v('TRONGRID_API_KEY')) ?>" autocomplete="off">
+                <div class="help">Free at trongrid.io. Recommended once you get many TRC-20 deposits (avoids rate limits).</div></div>
+            <div class="form-group"><label>BSC RPC address</label><input type="url" name="BSC_RPC_URL" value="<?= e($v('BSC_RPC_URL')) ?>" placeholder="https://bsc-dataseed.bnbchain.org">
+                <div class="help">Leave empty to use public BSC nodes.</div></div>
+        </details>
         <label class="checkbox"><input type="checkbox" name="BANK_ENABLED" <?= $v('BANK_ENABLED') ? 'checked' : '' ?>> Accept bank transfer</label>
         <div class="form-group" style="margin-top:10px"><label>Bank details</label><textarea name="BANK_DETAILS" rows="4" placeholder="Bank: ...&#10;Account name: ...&#10;Account number: ..."><?= e($v('BANK_DETAILS')) ?></textarea></div>
         <div class="form-group"><label>Exchange rate note (optional)</label><input type="text" name="BANK_RATE_NOTE" value="<?= e($v('BANK_RATE_NOTE')) ?>" placeholder="1 USD = 1500 NGN"></div>
